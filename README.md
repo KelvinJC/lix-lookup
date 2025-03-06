@@ -1,5 +1,5 @@
 # lix-lookup
-A program to read two CSV files:
+An elixir program to read two CSV files:
 - the first file contains the staff ID, names, and roles of staff within a specific region.
 - the second file contains ID, email, and additional data fields for a larger pool of staff.
 the program performs a lookup using staff IDs from the first file
