@@ -10,7 +10,7 @@
 
 
 defmodule GetStaffEmail do
-  @pwd "./automation_projects/git/"
+  @pwd "./"
   @all_staff_list  @pwd<>"all_staff.csv"
   @region_staff_list  @pwd<>"region_staff_list.csv"
   @region_staff_email  @pwd<>"region_staff_email.csv"
