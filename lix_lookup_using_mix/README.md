@@ -1,21 +1,11 @@
 # LixLookupUsingMix
 
-**TODO: Add description**
-
-## Installation
-
-If [available in Hex](https://hex.pm/docs/publish), the package can be installed
-by adding `lix_lookup_using_mix` to your list of dependencies in `mix.exs`:
-
-```elixir
-def deps do
-  [
-    {:lix_lookup_using_mix, "~> 0.1.0"}
-  ]
-end
-```
-
-Documentation can be generated with [ExDoc](https://github.com/elixir-lang/ex_doc)
-and published on [HexDocs](https://hexdocs.pm). Once published, the docs can
-be found at <https://hexdocs.pm/lix_lookup_using_mix>.
-
+An elixir program to read two CSV files:
+- the first file contains the staff ID, names, and roles of staff within a specific region.
+- the second file contains ID, email, and additional data fields for a larger pool of staff.
+the program performs a lookup using staff IDs from the first file
+to find their corresponding emails in the second file.
+It then generates two new CSV files:
+- one containing the staff ID, name, and email for the subset of staff.
+  if an email is not found, the email field will contain either "No email" or "Invalid email".
+- and another containing the names of those staff whose email were not found
