@@ -1,74 +1,55 @@
-defmodule LixLookupUsingMix do
+
+defmodule LixLookup do
   @pwd "./"
   @all_staff_list  @pwd<>"all_staff.csv"
-  @region_staff_list  @pwd<>"region_staff_list.csv"
-  @region_staff_email  @pwd<>"region_staff_email.csv"
-  @region_staff_no_email_found  @pwd<>"region_staff_no_email_found.csv"
-  @email_length_check "@regionelectricity.com"
 
   def main() do
-    staff_id_email_map =
-      read_csv(@all_staff_list)
-      |> build_staff_id_email_map()
-
-    region_staff_data = read_csv(@region_staff_list)
-    region_staff_data
-    |> Stream.map(&match_email(&1, staff_id_email_map))
-    |> write_stream_to_csv(@region_staff_email, [use_headers: true])
-
-    staff_id_email_map
-    |> get_region_staff_without_email(region_staff_data)
-    |> write_stream_to_csv(@region_staff_no_email_found, use_headers: false)
-  end
-
-  defp read_csv(file) do
-    header_row = 1
-    File.stream!(file)
-    |> Stream.map(&String.split(&1, ","))
-    |> Stream.drop(header_row)
-  end
-
-  defp build_staff_id_email_map(all_staff_data) do
-    all_staff_data
-    |> Enum.reduce(%{}, fn (row, map) ->
-      staff_id = Enum.at(row, 5)
-      staff_email = Enum.at(row, 7)
-      Map.put(map, staff_id, String.downcase(staff_email))
-    end)
-  end
-
-  defp match_email([_, id, name, _role], staff_id_email_map) do
-    email = staff_id_email_map[id]
-    email_val = cond do
-      email == nil ->
-        "No email"
-      String.length(email) < String.length(@email_length_check) ->
-        "Invalid email"
-      true -> email
+    @all_staff_list
+    |> line_stream_from_chunk_read()
+    |> Stream.chunk_every(100)
+    |> Stream.map(&Task.async(fn -> build_map_from_line_stream(&1) end))
+    |> Stream.map(&Task.await(&1))
+    |> Enum.reduce(%{}, &Map.merge(&2, &1)) # Merges the results of all tasks
     end
-    "#{id}, #{String.trim(name)}, #{email_val}\n"
-  end
 
-  defp write_stream_to_csv(stream_data, csv_path, opts) do
-    headers = ["staff_id, name, email\n"]
-    use_headers = Keyword.get(opts, :use_headers, false)
+  def build_map_from_line_stream(lines) do
+    build =
+      try do
+        map =
+          lines
+          |> Stream.map(&String.trim/1)
+          |> Stream.map(&String.split(&1, ","))
+          # |> Stream.reject(fn row -> Enum.at(row, 7) == nil end)
+          |> Stream.map(fn([_, _, _, _, _, id, _, email | _]) ->
+            %{id => String.downcase(email)}
+          end)
+          |> Enum.reduce(%{}, fn (new_map, old_map) ->
+            Map.merge(new_map, old_map)
+          end)
+        {:ok, map}
+      rescue
+        e -> {:error, Exception.message(e)}
+      end
 
-    case use_headers do
-      true ->
-        Stream.concat(headers, stream_data)
-      false ->
-        stream_data
+    case build do
+      {:ok, map} -> map
+      {:error, _} -> %{}
     end
-    |> Enum.into(File.stream!(csv_path))
   end
 
-  defp get_region_staff_without_email(staff_id_email_map, region_staff_data) do
-    region_staff_data
-    |> Stream.map(fn([_, id, name, _role]) -> {id, name, staff_id_email_map[id]} end)
-    |> Stream.filter(fn({_id, _name, email}) ->
-      email == nil or
-      String.length(email) < String.length(@email_length_check)
+  @doc """
+  Read file at `path` in chunks of given size (binary mode) \\
+  and output a new stream of lines from each chunk. \\
+  Default value of `chunk_size` is 500 KB.
+  """
+  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
+    path
+    |> File.stream!([], chunk_size)
+    |> Stream.transform("", fn (chunk, acc) ->
+      [last_line | lines] =
+        acc <> chunk
+        |> String.split("\n")
+      {lines, last_line}
     end)
-    |> Stream.map(fn({_id, name, _email}) -> "#{String.trim(name)}\n" end)
   end
 end
