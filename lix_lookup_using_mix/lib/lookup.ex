@@ -12,6 +12,22 @@ defmodule LixLookup do
     |> Enum.reduce(%{}, &Map.merge(&2, &1)) # Merges the results of all tasks
     end
 
+  @doc """
+  Read file at `path` in chunks of given size (binary mode) \\
+  and output a new stream of lines from each chunk. \\
+  Default value of `chunk_size` is 500 KB.
+  """
+  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
+    path
+    |> File.stream!([], chunk_size)
+    |> Stream.transform("", fn (chunk, acc) ->
+      [last_line | lines] =
+        acc <> chunk
+        |> String.split("\n")
+      {lines, last_line}
+    end)
+  end
+
   def build_map_from_line_stream(lines) do
     build =
       try do
@@ -35,21 +51,5 @@ defmodule LixLookup do
       {:ok, map} -> map
       {:error, _} -> %{}
     end
-  end
-
-  @doc """
-  Read file at `path` in chunks of given size (binary mode) \\
-  and output a new stream of lines from each chunk. \\
-  Default value of `chunk_size` is 500 KB.
-  """
-  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
-    path
-    |> File.stream!([], chunk_size)
-    |> Stream.transform("", fn (chunk, acc) ->
-      [last_line | lines] =
-        acc <> chunk
-        |> String.split("\n")
-      {lines, last_line}
-    end)
   end
 end
