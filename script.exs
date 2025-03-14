@@ -15,39 +15,39 @@ defmodule GetStaffEmail do
   @region_staff_list  @pwd<>"region_staff_list.csv"
   @region_staff_email  @pwd<>"region_staff_email.csv"
   @region_staff_no_email_found  @pwd<>"region_staff_no_email_found.csv"
-  @email_length_check "@regionelectricity.com"
 
   def main() do
     staff_id_email_map =
       read_csv(@all_staff_list)
       |> build_staff_id_email_map()
 
-    region_staff_data = read_csv(@region_staff_list)
-    region_staff_data
-    |> Stream.map(&match_email(&1, staff_id_email_map))
-    |> write_stream_to_csv(@region_staff_email, [use_headers: true])
+      region_staff_data = read_csv(@region_staff_list)
+      region_staff_data
+      |> Stream.map(&match_email(&1, staff_id_email_map))
+      |> write_stream_to_csv(@region_staff_email, [use_headers: true])
 
-    staff_id_email_map
-    |> get_region_staff_without_email(region_staff_data)
-    |> write_stream_to_csv(@region_staff_no_email_found, use_headers: false)
-  end
+      staff_id_email_map
+      |> get_region_staff_without_email(region_staff_data)
+      |> write_stream_to_csv(@region_staff_no_email_found, [use_headers: false])
+    end
 
-  defp read_csv(file) do
-    header_row = 1
-    File.stream!(file)
-    |> Stream.map(&String.split(&1, ","))
-    |> Stream.drop(header_row)
-  end
+    defp read_csv(file) do
+      header_row = 1
+      File.stream!(file)
+      |> Stream.map(&String.split(&1, ","))
+      |> Stream.drop(header_row)
+    end
 
-  defp build_staff_id_email_map(all_staff_data) do
-    all_staff_data
-    |> Enum.reduce(%{}, fn (row, map) ->
-      staff_id = Enum.at(row, 5)
-      staff_email = Enum.at(row, 7)
-      Map.put(map, staff_id, String.downcase(staff_email))
-    end)
-  end
+    defp build_staff_id_email_map(all_staff_data) do
+      all_staff_data
+      |> Enum.reduce(%{}, fn (row, map) ->
+        staff_id = Enum.at(row, 5)
+        staff_email = Enum.at(row, 7)
+        Map.put(map, staff_id, String.downcase(staff_email))
+      end)
+    end
 
+  @email_length_check "@regionelectricity.com"
   defp match_email([_, id, name, _role], staff_id_email_map) do
     email = staff_id_email_map[id]
     email_val = cond do
@@ -64,11 +64,10 @@ defmodule GetStaffEmail do
     headers = ["staff_id, name, email\n"]
     use_headers = Keyword.get(opts, :use_headers, false)
 
-    case use_headers do
-      true ->
-        Stream.concat(headers, stream_data)
-      false ->
-        stream_data
+    if use_headers == true do
+      Stream.concat(headers, stream_data)
+    else
+      stream_data
     end
     |> Enum.into(File.stream!(csv_path))
   end
