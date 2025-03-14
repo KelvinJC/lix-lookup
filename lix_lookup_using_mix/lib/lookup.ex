@@ -15,6 +15,8 @@ defmodule LixLookup do
     end))
     |> Stream.map(&Task.await(&1))
     |> Enum.reduce(%{}, &Map.merge(&2, &1)) # Merges the results of all tasks
+
+    proc_summary(success_process_counter, error_process_counter)
   end
 
   @doc """
@@ -60,5 +62,14 @@ defmodule LixLookup do
         ProcessCounter.increment_count(error_counter_pid)
         %{}
     end
+  end
+
+  def proc_summary() do
+    succ = ProcessCounter.get_count(success_process_counter)
+    |> IO.inspect(label: "num_successful_processes")
+    err = ProcessCounter.get_count(error_process_counter)
+    |> IO.inspect(label: "num_error_processes")
+    succ + err
+    |> IO.inspect(label: "total_num_processes")
   end
 end
