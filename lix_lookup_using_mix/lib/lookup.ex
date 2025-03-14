@@ -4,19 +4,17 @@ defmodule LixLookup do
   @all_staff_list  @pwd<>"all_staff23.csv"
 
   def main() do
-    {:ok, process_counter} = ProcessCounter.start_link(0)
+    {:ok, success_process_counter} = ProcessCounter.start_link(0)
+    {:ok, error_process_counter} = ProcessCounter.start_link(0)
+
     @all_staff_list
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(100)
     |> Stream.map(&Task.async(fn ->
-      ProcessCounter.increment_count(process_counter)
-      build_map_from_line_stream(&1)
+      build_map_from_line_stream(&1, success_process_counter, error_process_counter)
     end))
     |> Stream.map(&Task.await(&1))
     |> Enum.reduce(%{}, &Map.merge(&2, &1)) # Merges the results of all tasks
-
-    ProcessCounter.get_count(process_counter)
-    |> IO.inspect(label: "num_processes")
   end
 
   @doc """
@@ -35,7 +33,7 @@ defmodule LixLookup do
     end)
   end
 
-  def build_map_from_line_stream(lines) do
+  def build_map_from_line_stream(lines, success_counter_pid, error_counter_pid) do
     build =
       try do
         map =
@@ -55,8 +53,12 @@ defmodule LixLookup do
       end
 
     case build do
-      {:ok, map} -> map
-      {:error, _} -> %{}
+      {:ok, map} ->
+        ProcessCounter.increment_count(success_counter_pid)
+        map
+      {:error, _} ->
+        ProcessCounter.increment_count(error_counter_pid)
+        %{}
     end
   end
 end
