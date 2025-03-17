@@ -15,7 +15,7 @@ defmodule LixLookup do
     {:ok, staff_cache_pid} =
       @all_staff_list
       |> line_stream_from_chunk_read()
-      |> Stream.chunk_every(100)
+      |> Stream.chunk_every(2500)
       |> Stream.map(&Task.async(fn -> build_map_from_line_stream(&1) end))
       |> Stream.map(&Task.await(&1))
       |> Enum.reduce(%{}, &Map.merge(&2, &1)) # merge results from all tasks
