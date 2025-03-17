@@ -17,14 +17,13 @@ defmodule Staff do
     Agent.start_link(fn -> map end)
   end
 
-  def find_staff_email(agent, [_, id, _, _]) do
+  def find_staff_email(agent, [_, id, name, _]) do
     Agent.get(agent, fn (state) ->
-      IO.inspect(id, label: "id")
       email = Map.get(state, id)
       if email == nil do
         {:error, :key_not_found}
       else
-        {:ok, email}
+        {:ok, {id, name, email}}
       end
     end)
   end
