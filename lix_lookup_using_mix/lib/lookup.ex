@@ -1,7 +1,7 @@
 
 defmodule LixLookup do
   @pwd "./"
-  @all_staff_list  @pwd<>"all_staff2.csv"
+  @all_staff_list  @pwd<>"all_staff.csv"
   @region_staff_list  @pwd<>"region_staff_list.csv"
   @region_staff_emails  @pwd<>"region_staff_email.csv"
 
@@ -27,7 +27,7 @@ defmodule LixLookup do
 
     @region_staff_list
     |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(100)
+    # |> Stream.chunk_every(100)
     |> Task.async_stream(
       &match_staff_to_email(staff_cache, &1),
       max_concurrency: 5,
