@@ -10,6 +10,15 @@ defmodule ProcessCounter do
   def increment_count(agent) do
     Agent.update(agent, fn (state) -> state + 1 end)
   end
+
+  def proc_summary(success_agent, error_agent) do
+    succ = get_count(success_agent)
+    |> IO.inspect(label: "number of successful processes")
+    err = get_count(error_agent)
+    |> IO.inspect(label: "number of error processes")
+    succ + err
+    |> IO.inspect(label: "total number of processes")
+  end
 end
 
 defmodule Staff do
