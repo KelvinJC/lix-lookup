@@ -1,22 +1,25 @@
 
 defmodule LixLookup do
   @pwd "./"
-  @all_staff_list  @pwd<>"all_staff23.csv"
+  @all_staff_list  @pwd<>"all_staff.csv"
 
   def main() do
     {:ok, success_process_counter} = ProcessCounter.start_link(0)
     {:ok, error_process_counter} = ProcessCounter.start_link(0)
+    {:ok, staff_cache} =
+      @all_staff_list
+      |> line_stream_from_chunk_read()
+      |> Stream.chunk_every(100)
+      |> Stream.map(&Task.async(fn ->
+        build_map_from_line_stream(&1, success_process_counter, error_process_counter)
+      end))
+      |> Stream.map(&Task.await(&1))
+      |> Enum.reduce(%{}, &Map.merge(&2, &1)) # Merges the results of all tasks
+      |> Staff.start_link()
 
-    @all_staff_list
-    |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(100)
-    |> Stream.map(&Task.async(fn ->
-      build_map_from_line_stream(&1, success_process_counter, error_process_counter)
-    end))
-    |> Stream.map(&Task.await(&1))
-    |> Enum.reduce(%{}, &Map.merge(&2, &1)) # Merges the results of all tasks
-
-    proc_summary(success_process_counter, error_process_counter)
+      Staff.find_staff_email(staff_cache, [844, 10089,"Celestine Augustina Chinedu","Customer Relationship Assistant"])
+      |> IO.inspect(label: "MATCH...")
+      # proc_summary(success_process_counter, error_process_counter)
   end
 
   @doc """
@@ -64,7 +67,7 @@ defmodule LixLookup do
     end
   end
 
-  def proc_summary() do
+  def proc_summary(success_process_counter, error_process_counter) do
     succ = ProcessCounter.get_count(success_process_counter)
     |> IO.inspect(label: "num_successful_processes")
     err = ProcessCounter.get_count(error_process_counter)
