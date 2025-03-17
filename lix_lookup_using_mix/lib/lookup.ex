@@ -16,9 +16,7 @@ defmodule LixLookup do
       @all_staff_list
       |> line_stream_from_chunk_read()
       |> Stream.chunk_every(100)
-      |> Stream.map(&Task.async(fn ->
-        build_map_from_line_stream(&1, success_process_counter, error_process_counter)
-      end))
+      |> Stream.map(&Task.async(fn -> build_map_from_line_stream(&1) end))
       |> Stream.map(&Task.await(&1))
       |> Enum.reduce(%{}, &Map.merge(&2, &1)) # merge results from all tasks
       |> Staff.start_link()
@@ -26,11 +24,7 @@ defmodule LixLookup do
     @region_staff_list
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(100)
-    |> Task.async_stream(
-      &match_staff_to_email(staff_cache, &1),
-      max_concurrency: 5,
-      timeout: :infinity
-    )
+    |> Task.async_stream(&match_staff_to_email(staff_cache, &1), max_concurrency: 5, timeout: :infinity)
     |> Enum.reduce([], fn ({:ok, record}, acc) -> acc ++ record end)
     |> Enum.reduce([], fn ({key, value}, acc) -> merge({key, value}, acc) end)
     |> write_stream_to_csv(@region_staff_emails, use_headers: true)
@@ -52,7 +46,7 @@ defmodule LixLookup do
     end)
   end
 
-  def build_map_from_line_stream(line_stream, success_counter_pid, error_counter_pid) do
+  def build_map_from_line_stream(line_stream) do
     build =
       try do
         map =
@@ -70,10 +64,8 @@ defmodule LixLookup do
       end
 
     case build do
-      {:ok, map} ->
-        map
-      {:error, _} ->
-        %{}
+      {:ok, map} -> map
+      {:error, _} -> %{}
     end
   end
 
