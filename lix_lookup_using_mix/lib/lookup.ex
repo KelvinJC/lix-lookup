@@ -3,6 +3,7 @@ defmodule LixLookup do
   @pwd "./"
   @all_staff_list  @pwd<>"all_staff2.csv"
   @region_staff_list  @pwd<>"region_staff_list.csv"
+  @region_staff_emails  @pwd<>"region_staff_email.csv"
 
   def run do
     {time, result} = :timer.tc(fn -> main() end)
