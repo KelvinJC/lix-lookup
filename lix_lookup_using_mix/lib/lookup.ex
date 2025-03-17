@@ -12,8 +12,6 @@ defmodule LixLookup do
   end
 
   def main() do
-    {:ok, success_process_counter} = ProcessCounter.start_link(0)
-    {:ok, error_process_counter} = ProcessCounter.start_link(0)
     {:ok, staff_cache} =
       @all_staff_list
       |> line_stream_from_chunk_read()
@@ -22,12 +20,12 @@ defmodule LixLookup do
         build_map_from_line_stream(&1, success_process_counter, error_process_counter)
       end))
       |> Stream.map(&Task.await(&1))
-      |> Enum.reduce(%{}, &Map.merge(&2, &1)) # Merges the results of all tasks
+      |> Enum.reduce(%{}, &Map.merge(&2, &1)) # merge results from all tasks
       |> Staff.start_link()
 
     @region_staff_list
     |> line_stream_from_chunk_read()
-    # |> Stream.chunk_every(100)
+    |> Stream.chunk_every(100)
     |> Task.async_stream(
       &match_staff_to_email(staff_cache, &1),
       max_concurrency: 5,
@@ -54,11 +52,11 @@ defmodule LixLookup do
     end)
   end
 
-  def build_map_from_line_stream(lines, success_counter_pid, error_counter_pid) do
+  def build_map_from_line_stream(line_stream, success_counter_pid, error_counter_pid) do
     build =
       try do
         map =
-          lines
+          line_stream
           |> format_string()
           |> Stream.map(fn([_, _, _, _, _, id, _, email | _]) ->
             %{id => String.downcase(email)}
@@ -73,10 +71,8 @@ defmodule LixLookup do
 
     case build do
       {:ok, map} ->
-        ProcessCounter.increment_count(success_counter_pid)
         map
       {:error, _} ->
-        ProcessCounter.increment_count(error_counter_pid)
         %{}
     end
   end
@@ -102,7 +98,7 @@ defmodule LixLookup do
     acc
   end
 
-  defp write_stream_to_csv(stream_data, csv_path, opts \\ [use_headers: false]) do
+  defp write_stream_to_csv(stream_data, csv_path, opts) do
     headers = ["staff_id, name, email\n"]
     use_headers = Keyword.get(opts, :use_headers, false)
 
@@ -112,14 +108,5 @@ defmodule LixLookup do
       stream_data
     end
     |> Enum.into(File.stream!(csv_path))
-  end
-
-  def proc_summary(success_process_counter, error_process_counter) do
-    succ = ProcessCounter.get_count(success_process_counter)
-    |> IO.inspect(label: "num_successful_processes")
-    err = ProcessCounter.get_count(error_process_counter)
-    |> IO.inspect(label: "num_error_processes")
-    succ + err
-    |> IO.inspect(label: "total_num_processes")
   end
 end
