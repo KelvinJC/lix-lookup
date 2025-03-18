@@ -12,22 +12,28 @@ defmodule LixLookup do
   end
 
   def main() do
-    {:ok, staff_cache_pid} =
-      @all_staff_list
-      |> line_stream_from_chunk_read()
-      |> Stream.chunk_every(2500)
-      |> Stream.map(&Task.async(fn -> build_map_from_line_stream(&1) end))
-      |> Stream.map(&Task.await(&1))
-      |> Enum.reduce(%{}, &Map.merge(&2, &1)) # merge results from all tasks
-      |> Staff.start_link()
+    {:ok, staff_cache_pid} = build_staff_map(@all_staff_list)
+    write_region_staff_data(@region_staff_list, staff_cache_pid, @region_staff_emails)
+  end
 
-    @region_staff_list
+  def build_staff_map(all_staff) do
+    all_staff
+    |> line_stream_from_chunk_read()
+    |> Stream.chunk_every(2500)
+    |> Stream.map(&Task.async(fn -> build_map_from_line_stream(&1) end))
+    |> Stream.map(&Task.await(&1))
+    |> Enum.reduce(%{}, &Map.merge(&2, &1)) # merge results from all tasks
+    |> Staff.start_link()
+  end
+
+  def write_region_staff_data(region_staff, staff_cache_pid, path) do
+    region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(100)
     |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid), max_concurrency: 5, timeout: :infinity)
     |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ stream_result end)
     |> Enum.reduce([], fn ({tag, row}, acc) -> merge({tag, row}, acc) end)
-    |> write_stream_to_csv(@region_staff_emails, use_headers: true)
+    |> write_stream_to_csv(path, use_headers: true)
   end
 
   @doc """
