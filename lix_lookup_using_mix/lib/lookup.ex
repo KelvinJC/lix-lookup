@@ -117,3 +117,24 @@ defmodule LixLookup do
     |> Enum.into(File.stream!(csv_path))
   end
 end
+
+defmodule Staff do
+  def start_link(map) do
+    Agent.start_link(fn -> map end)
+  end
+
+  def find_staff_email([_, id, name, _], agent) do
+    Agent.get(agent, fn (state) ->
+      email = Map.get(state, id)
+      if email == nil do
+        {:error, {:email_not_found}}
+      else
+        {:ok, {id, name, email}}
+      end
+    end)
+  end
+
+  def get_map(agent) do
+    Agent.get(agent, fn (state) -> state end)
+  end
+end
