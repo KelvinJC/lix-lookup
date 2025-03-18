@@ -25,7 +25,7 @@ defmodule LixLookup do
     write_region_staff_data(@region_staff_list, staff_cache_pid, @region_staff_emails)
   end
 
-  def build_staff_map(all_staff) do
+  defp build_staff_map(all_staff) do
     all_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(2500)
@@ -35,7 +35,7 @@ defmodule LixLookup do
     |> Staff.start_link()
   end
 
-  def write_region_staff_data(region_staff, staff_cache_pid, path) do
+  defp write_region_staff_data(region_staff, staff_cache_pid, path) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(100)
@@ -61,7 +61,7 @@ defmodule LixLookup do
     end)
   end
 
-  def build_map_from_line_stream(line_stream) do
+  defp build_map_from_line_stream(line_stream) do
     build =
       try do
         map =
@@ -84,24 +84,24 @@ defmodule LixLookup do
     end
   end
 
-  def format_string(enum) do
+  defp format_string(enum) do
     enum
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ",", trim: true))
   end
 
-  def match_staff_to_email(staff_list, cache_pid) do
+  defp match_staff_to_email(staff_list, cache_pid) do
     staff_list
     |> format_string()
     |> Enum.reject(fn (row) -> row == [] end )
     |> Enum.map(&Staff.find_staff_email(&1, cache_pid))
   end
 
-  def merge({tag, {id, name, email}}, acc) when tag != :error do
+  defp merge({tag, {id, name, email}}, acc) when tag != :error do
     acc ++ ["#{id}, #{String.trim(name)}, #{email}\n"]
   end
 
-  def merge(_, acc) do
+  defp merge(_, acc) do
     acc
   end
 
