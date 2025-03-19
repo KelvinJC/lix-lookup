@@ -70,11 +70,9 @@ defmodule LixLookup do
         map =
           line_stream
           |> format_string()
-          |> Stream.map(fn([_, _, _, _, _, id, _, email | _]) ->
-            %{id => String.downcase(email)}
-          end)
-          |> Enum.reduce(%{}, fn (new_map, old_map) ->
-            Map.merge(new_map, old_map)
+          |> Enum.reduce(%{}, fn (row, map) ->
+            [_, _, _, _, _, id, _, email | _] = row
+            Map.put(map, id, String.downcase(email))
           end)
         {:ok, map}
       rescue
