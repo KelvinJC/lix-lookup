@@ -11,7 +11,7 @@
 defmodule LixLookup do
   @pwd "./"
   @all_staff_list  @pwd<>"all_staff.csv"
-  @region_staff_list  @pwd<>"region_staff_list.csv"
+  @region_staff_list  @pwd<>"region_staff.csv"
   @region_staff_emails  @pwd<>"region_staff_email.csv"
 
   def run do
