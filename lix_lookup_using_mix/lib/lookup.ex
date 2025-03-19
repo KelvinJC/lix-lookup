@@ -11,7 +11,7 @@
 defmodule LixLookup do
   @pwd "./"
   @all_staff_list  @pwd<>"all_staff.csv"
-  @region_staff_list  @pwd<>"region_staff_list.csv"
+  @region_staff_list  @pwd<>"region_staff.csv"
   @region_staff_emails  @pwd<>"region_staff_email.csv"
 
   def run do
@@ -25,7 +25,7 @@ defmodule LixLookup do
     write_region_staff_data(@region_staff_list, staff_cache_pid, @region_staff_emails)
   end
 
-  def build_staff_map(all_staff) do
+  defp build_staff_map(all_staff) do
     all_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(2500)
@@ -35,7 +35,7 @@ defmodule LixLookup do
     |> Staff.start_link()
   end
 
-  def write_region_staff_data(region_staff, staff_cache_pid, path) do
+  defp write_region_staff_data(region_staff, staff_cache_pid, path) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(100)
@@ -51,27 +51,28 @@ defmodule LixLookup do
   Default value of `chunk_size` is 500 KB.
   """
   def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
-    path
-    |> File.stream!([], chunk_size)
-    |> Stream.transform("", fn (chunk, acc) ->
-      [last_line | lines] =
-        acc <> chunk
-        |> String.split("\n")
-      {lines, last_line}
+    File.stream!(path, [], chunk_size)
+    |> Stream.transform("", fn chunk, acc ->
+      chunk = String.replace(chunk, "\r\n", "\n")
+      new_chunk = acc <> chunk |> String.split("\n", trim: true)
+
+      case new_chunk do
+        [] -> {[], ""}
+        [last_line] -> {[], last_line}
+        [last_line | lines] -> {lines, last_line}
+      end
     end)
   end
 
-  def build_map_from_line_stream(line_stream) do
+  defp build_map_from_line_stream(line_stream) do
     build =
       try do
         map =
           line_stream
           |> format_string()
-          |> Stream.map(fn([_, _, _, _, _, id, _, email | _]) ->
-            %{id => String.downcase(email)}
-          end)
-          |> Enum.reduce(%{}, fn (new_map, old_map) ->
-            Map.merge(new_map, old_map)
+          |> Enum.reduce(%{}, fn (row, map) ->
+            [_, _, _, _, _, id, _, email | _] = row
+            Map.put(map, id, String.downcase(email))
           end)
         {:ok, map}
       rescue
@@ -84,24 +85,24 @@ defmodule LixLookup do
     end
   end
 
-  def format_string(enum) do
-    enum
+  defp format_string(strings) do
+    strings
     |> Stream.map(&String.trim(&1))
-    |> Stream.map(&String.split(&1, ",", trim: true))
+    |> Stream.map(&String.split(&1, ","))
   end
 
-  def match_staff_to_email(staff_list, cache_pid) do
+  defp match_staff_to_email(staff_list, cache_pid) do
     staff_list
     |> format_string()
     |> Enum.reject(fn (row) -> row == [] end )
     |> Enum.map(&Staff.find_staff_email(&1, cache_pid))
   end
 
-  def merge({tag, {id, name, email}}, acc) when tag != :error do
+  defp merge({tag, {id, name, email}}, acc) when tag != :error do
     acc ++ ["#{id}, #{String.trim(name)}, #{email}\n"]
   end
 
-  def merge(_, acc) do
+  defp merge(_, acc) do
     acc
   end
 
