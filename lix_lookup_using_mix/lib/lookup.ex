@@ -85,10 +85,10 @@ defmodule LixLookup do
     end
   end
 
-  defp format_string(enum) do
-    enum
+  defp format_string(strings) do
+    strings
     |> Stream.map(&String.trim(&1))
-    |> Stream.map(&String.split(&1, ",", trim: true))
+    |> Stream.map(&String.split(&1, ","))
   end
 
   defp match_staff_to_email(staff_list, cache_pid) do
