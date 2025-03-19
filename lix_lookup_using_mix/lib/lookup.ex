@@ -51,13 +51,16 @@ defmodule LixLookup do
   Default value of `chunk_size` is 500 KB.
   """
   def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
-    path
-    |> File.stream!([], chunk_size)
-    |> Stream.transform("", fn (chunk, acc) ->
-      [last_line | lines] =
-        acc <> chunk
-        |> String.split("\n")
-      {lines, last_line}
+    File.stream!(path, [], chunk_size)
+    |> Stream.transform("", fn chunk, acc ->
+      chunk = String.replace(chunk, "\r\n", "\n")
+      new_chunk = acc <> chunk |> String.split("\n", trim: true)
+
+      case new_chunk do
+        [] -> {[], ""}
+        [last_line] -> {[], last_line}
+        [last_line | lines] -> {lines, last_line}
+      end
     end)
   end
 
