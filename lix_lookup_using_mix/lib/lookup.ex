@@ -124,7 +124,7 @@ defmodule Staff do
     Agent.start_link(fn -> map end)
   end
 
-  def get_map(agent) do
+  def get_all_staff(agent) do
     Agent.get(agent, fn(state) -> state end)
   end
 
