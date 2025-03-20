@@ -38,8 +38,8 @@ defmodule LixLookup do
   defp write_region_staff_data(region_staff, staff_cache_pid, path) do
     region_staff
     |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(100)
-    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid), max_concurrency: 5, timeout: :infinity)
+    |> Stream.chunk_every(500)
+    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid), max_concurrency: 300, timeout: :infinity)
     |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ stream_result end)
     |> Enum.reduce([], fn ({tag, row}, acc) -> merge({tag, row}, acc) end)
     |> write_stream_to_csv(path, use_headers: true)
@@ -124,8 +124,12 @@ defmodule Staff do
     Agent.start_link(fn -> map end)
   end
 
+  def get_map(agent) do
+    Agent.get(agent, fn(state) -> state end)
+  end
+
   def find_staff_email([_, id, name, _], agent) do
-    Agent.get(agent, fn (state) ->
+    Agent.get(agent, fn(state) ->
       email = Map.get(state, id)
       if email == nil do
         {:error, {:email_not_found}}
@@ -135,7 +139,18 @@ defmodule Staff do
     end)
   end
 
-  def get_map(agent) do
-    Agent.get(agent, fn (state) -> state end)
+  def bulk_find_staff_email(staff, agent) do
+    Agent.get(agent, fn(state) -> match(staff, state) end)
+  end
+
+  defp match(rows, map) do
+    Stream.map(rows, fn ([_, id, name, _]) ->
+      email = Map.get(map, id)
+      if email == nil do
+        {:error, "staff_id not in map"}
+      else
+        {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+      end
+    end)
   end
 end
