@@ -23,8 +23,8 @@ Step-by-Step Execution:
 - Parallel Data Mapping:
   - Each worker process:
     - Receives a chunk of streamed staff data.
-      - Builds a key-value map from the received lines.
-      - Transmits the generated map back to the main process.
+    - Builds a key-value map from the received lines.
+    - Transmits the generated map back to the main process.
  
 - Data Merging & Caching:
   - The main process merges all received maps.
