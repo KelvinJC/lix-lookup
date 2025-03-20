@@ -10,7 +10,7 @@
 
 defmodule LixLookup do
   @pwd "./"
-  @all_staff_list  @pwd<>"all_staff.csv"
+  @all_staff_list  @pwd<>"all_staff_1MM.csv"
   @region_staff_list  @pwd<>"region_staff.csv"
   @region_staff_emails  @pwd<>"region_staff_email.csv"
 
@@ -40,9 +40,17 @@ defmodule LixLookup do
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(500)
     |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid), max_concurrency: 300, timeout: :infinity)
-    |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ stream_result end)
-    |> Enum.reduce([], fn ({tag, row}, acc) -> merge({tag, row}, acc) end)
+    |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ merge_stream_result_enum(stream_result) end)
     |> write_stream_to_csv(path, use_headers: true)
+  end
+
+  def merge_stream_result_enum(stream_result_enum) do
+    Enum.reduce(stream_result_enum, [], fn {tag, row}, lines ->
+      case tag do
+        :ok -> lines ++ [row]
+        :error -> lines
+      end
+    end)
   end
 
   @doc """
@@ -95,7 +103,7 @@ defmodule LixLookup do
     staff_list
     |> format_strings()
     |> Enum.reject(fn (row) -> row == [] end )
-    |> Enum.map(&Staff.find_staff_email(&1, cache_pid))
+    |> Staff.lookup_staff_emails(cache_pid)
   end
 
   defp merge({tag, {id, name, email}}, acc) when tag != :error do
@@ -141,7 +149,7 @@ defmodule Staff do
 
   def lookup_staff_emails(staff, agent) do
     lookup = fn staff, all_staff ->
-      Stream.map(staff, fn ([_, id, name, _]) ->
+      Enum.map(staff, fn ([_, id, name, _]) ->
         email = Map.get(all_staff, id)
         if email == nil do
           {:error, "Staff ID does not match any record."}
