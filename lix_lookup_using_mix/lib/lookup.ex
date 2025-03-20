@@ -1,12 +1,12 @@
-# Implementation:
+# Quick recap of implementation. Find full version in README.md file.
 # 1. The main process reads data from a file.
 # 2. It spawns multiple asynchronous processes, each responsible for:
 #    - Receiving a chunk of streamed staff data.
 #    - Building a map from the received lines.
 #    - Transmitting the map back to the main process.
 # 3. The main process merges the received maps and caches the final result in an Agent.
-# 4. Another batch of processes reads lines from a second file.
-# 5. Each process performs a lookup against the cached data by querying the Agent.
+# 4. It spawns another batch of async processes to read lines from a second file.
+# 5. Each new process performs a lookup against the cached data by querying the Agent.
 
 defmodule LixLookup do
   @pwd "./"
@@ -29,20 +29,27 @@ defmodule LixLookup do
     all_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(2500)
-    |> Stream.map(&Task.async(fn -> build_map_from_line_stream(&1) end))
-    |> Stream.map(&Task.await(&1))
-    |> Enum.reduce(%{}, &Map.merge(&2, &1)) # merge results from all tasks
+    |> Task.async_stream(&build_map_from_line_stream/1, max_concurrency: 5, timeout: :infinity)
+    |> Enum.reduce(%{}, fn ({:ok, stream_result}, acc) -> Map.merge(acc, stream_result) end)
     |> Staff.start_link()
   end
 
   defp write_region_staff_data(region_staff, staff_cache_pid, path) do
     region_staff
     |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(100)
-    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid), max_concurrency: 5, timeout: :infinity)
-    |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ stream_result end)
-    |> Enum.reduce([], fn ({tag, row}, acc) -> merge({tag, row}, acc) end)
+    |> Stream.chunk_every(500)
+    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid), max_concurrency: 300, timeout: :infinity)
+    |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ merge_stream_result_enum(stream_result) end)
     |> write_stream_to_csv(path, use_headers: true)
+  end
+
+  def merge_stream_result_enum(stream_result_enum) do
+    Enum.reduce(stream_result_enum, [], fn {tag, row}, lines ->
+      case tag do
+        :ok -> lines ++ [row]
+        :error -> lines
+      end
+    end)
   end
 
   @doc """
@@ -69,7 +76,7 @@ defmodule LixLookup do
       try do
         map =
           line_stream
-          |> format_string()
+          |> format_strings()
           |> Enum.reduce(%{}, fn (row, map) ->
             [_, _, _, _, _, id, _, email | _] = row
             Map.put(map, id, String.downcase(email))
@@ -85,7 +92,7 @@ defmodule LixLookup do
     end
   end
 
-  defp format_string(strings) do
+  defp format_strings(strings) do
     strings
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
@@ -93,17 +100,9 @@ defmodule LixLookup do
 
   defp match_staff_to_email(staff_list, cache_pid) do
     staff_list
-    |> format_string()
+    |> format_strings()
     |> Enum.reject(fn (row) -> row == [] end )
-    |> Enum.map(&Staff.find_staff_email(&1, cache_pid))
-  end
-
-  defp merge({tag, {id, name, email}}, acc) when tag != :error do
-    acc ++ ["#{id}, #{String.trim(name)}, #{email}\n"]
-  end
-
-  defp merge(_, acc) do
-    acc
+    |> Staff.lookup_staff_emails(cache_pid)
   end
 
   defp write_stream_to_csv(stream_data, csv_path, opts) do
@@ -124,8 +123,12 @@ defmodule Staff do
     Agent.start_link(fn -> map end)
   end
 
+  def get_all_staff(agent) do
+    Agent.get(agent, fn(state) -> state end)
+  end
+
   def find_staff_email([_, id, name, _], agent) do
-    Agent.get(agent, fn (state) ->
+    Agent.get(agent, fn(state) ->
       email = Map.get(state, id)
       if email == nil do
         {:error, {:email_not_found}}
@@ -135,7 +138,18 @@ defmodule Staff do
     end)
   end
 
-  def get_map(agent) do
-    Agent.get(agent, fn (state) -> state end)
+  def lookup_staff_emails(staff, agent) do
+    lookup = fn staff, all_staff ->
+      Enum.map(staff, fn ([_, id, name, _]) ->
+        email = Map.get(all_staff, id)
+        if email == nil do
+          {:error, "Staff ID does not match any record."}
+        else
+          {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+        end
+      end)
+    end
+
+    Agent.get(agent, fn(all_staff) -> lookup.(staff, all_staff) end)
   end
 end
