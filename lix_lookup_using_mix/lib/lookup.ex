@@ -1,16 +1,16 @@
-# Implementation:
+# Quick recap of implementation. Find full version in README.md file.
 # 1. The main process reads data from a file.
 # 2. It spawns multiple asynchronous processes, each responsible for:
 #    - Receiving a chunk of streamed staff data.
 #    - Building a map from the received lines.
 #    - Transmitting the map back to the main process.
 # 3. The main process merges the received maps and caches the final result in an Agent.
-# 4. Another batch of processes reads lines from a second file.
-# 5. Each process performs a lookup against the cached data by querying the Agent.
+# 4. It spawns another batch of async processes to read lines from a second file.
+# 5. Each new process performs a lookup against the cached data by querying the Agent.
 
 defmodule LixLookup do
   @pwd "./"
-  @all_staff_list  @pwd<>"all_staff_1MM.csv"
+  @all_staff_list  @pwd<>"all_staff.csv"
   @region_staff_list  @pwd<>"region_staff.csv"
   @region_staff_emails  @pwd<>"region_staff_email.csv"
 
