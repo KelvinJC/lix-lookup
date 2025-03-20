@@ -85,7 +85,7 @@ defmodule LixLookup do
     end
   end
 
-  defp format_string(strings) do
+  defp format_strings(strings) do
     strings
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
