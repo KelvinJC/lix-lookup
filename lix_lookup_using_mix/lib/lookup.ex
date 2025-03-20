@@ -69,7 +69,7 @@ defmodule LixLookup do
       try do
         map =
           line_stream
-          |> format_string()
+          |> format_strings()
           |> Enum.reduce(%{}, fn (row, map) ->
             [_, _, _, _, _, id, _, email | _] = row
             Map.put(map, id, String.downcase(email))
@@ -93,7 +93,7 @@ defmodule LixLookup do
 
   defp match_staff_to_email(staff_list, cache_pid) do
     staff_list
-    |> format_string()
+    |> format_strings()
     |> Enum.reject(fn (row) -> row == [] end )
     |> Enum.map(&Staff.find_staff_email(&1, cache_pid))
   end
@@ -139,18 +139,18 @@ defmodule Staff do
     end)
   end
 
-  def bulk_find_staff_email(staff, agent) do
-    Agent.get(agent, fn(state) -> match(staff, state) end)
-  end
+  def lookup_staff_emails(staff, agent) do
+    lookup = fn staff, all_staff ->
+      Stream.map(staff, fn ([_, id, name, _]) ->
+        email = Map.get(all_staff, id)
+        if email == nil do
+          {:error, "Staff ID does not match any record."}
+        else
+          {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+        end
+      end)
+    end
 
-  defp match(rows, map) do
-    Stream.map(rows, fn ([_, id, name, _]) ->
-      email = Map.get(map, id)
-      if email == nil do
-        {:error, "staff_id not in map"}
-      else
-        {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
-      end
-    end)
+    Agent.get(agent, fn(all_staff) -> lookup.(staff, all_staff) end)
   end
 end
