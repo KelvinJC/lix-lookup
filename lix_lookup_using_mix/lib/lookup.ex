@@ -105,14 +105,6 @@ defmodule LixLookup do
     |> Staff.lookup_staff_emails(cache_pid)
   end
 
-  defp merge({tag, {id, name, email}}, acc) when tag != :error do
-    acc ++ ["#{id}, #{String.trim(name)}, #{email}\n"]
-  end
-
-  defp merge(_, acc) do
-    acc
-  end
-
   defp write_stream_to_csv(stream_data, csv_path, opts) do
     headers = ["staff_id, name, email\n"]
     use_headers = Keyword.get(opts, :use_headers, false)
