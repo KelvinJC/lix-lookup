@@ -29,9 +29,8 @@ defmodule LixLookup do
     all_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(2500)
-    |> Stream.map(&Task.async(fn -> build_map_from_line_stream(&1) end))
-    |> Stream.map(&Task.await(&1))
-    |> Enum.reduce(%{}, &Map.merge(&2, &1)) # merge results from all tasks
+    |> Task.async_stream(&build_map_from_line_stream/1, max_concurrency: 5, timeout: :infinity)
+    |> Enum.reduce(%{}, fn ({:ok, stream_result}, acc) -> Map.merge(acc, stream_result) end)
     |> Staff.start_link()
   end
 
