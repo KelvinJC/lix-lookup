@@ -16,29 +16,29 @@ This program efficiently processes large CSV files by leveraging concurrency.
 It uses multiple asynchronous processes to map staff data and perform lookups.
 
 Step-by-Step Execution:
-1️. Read Staff Data:
-    - The main process reads the first file as a stream.
-    - It spawns multiple asynchronous processes to handle chunks of data.
+- Read Staff Data:
+  - The main process reads the first file as a stream.
+  - It spawns multiple asynchronous processes to handle chunks of data.
  
-2️. Parallel Data Mapping:
-    - Each worker process:
-      - Receives a chunk of streamed staff data.
+- Parallel Data Mapping:
+  - Each worker process:
+    - Receives a chunk of streamed staff data.
       - Builds a key-value map from the received lines.
       - Transmits the generated map back to the main process.
  
-3️. Data Merging & Caching:
-    - The main process merges all received maps.
-    - It caches the final merged map in an Agent for quick access.
+- Data Merging & Caching:
+  - The main process merges all received maps.
+  - It caches the final merged map in an Agent for quick access.
  
-4️. Read Second File & Perform Lookups:
-    - A second batch of async processes reads another file.
-    - Each process retrieves staff records and performs lookups against the cached data.
+- Read Second File & Perform Lookups:
+  - A second batch of async processes reads another file.
+  - Each process retrieves staff records and performs lookups against the cached data.
  
-5️. Efficient Query Execution:
-    - Lookups are performed by querying the Agent.
-    - The system ensures minimal locking and maximizes performance.
+- Efficient Query Execution:
+  - Lookups are performed by querying the Agent.
+  - The system ensures minimal locking and maximizes performance.
  
- Key Benefits:
+Key Benefits:
 **Memory Efficient** – Streams data in chunks instead of loading everything into memory.  
 **Highly Concurrent** – Uses async processes to speed up mapping and lookups.  
 **Fast Lookups** – Cached data in an Agent ensures quick retrieval.  
