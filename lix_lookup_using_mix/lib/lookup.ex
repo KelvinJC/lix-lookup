@@ -28,8 +28,8 @@ defmodule LixLookup do
   defp build_staff_map(all_staff) do
     all_staff
     |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(2500)
-    |> Task.async_stream(&build_map_from_line_stream/1, max_concurrency: 5, timeout: :infinity)
+    |> Stream.chunk_every(5000)
+    |> Task.async_stream(&build_map_from_lines/1, max_concurrency: 6, timeout: 30_000)
     |> Enum.reduce(%{}, fn {:ok, stream_result}, acc -> Map.merge(acc, stream_result) end)
     |> Staff.start_link()
   end
@@ -37,9 +37,9 @@ defmodule LixLookup do
   defp write_region_staff_data(region_staff, staff_cache_pid, path) do
     region_staff
     |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(50)
+    |> Stream.chunk_every(5000)
     |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid),
-      max_concurrency: 15,
+      max_concurrency: 6,
       timeout: :infinity
     )
     |> Enum.count()
@@ -53,7 +53,7 @@ defmodule LixLookup do
   and output a new stream of lines from each chunk. \\
   Default value of `chunk_size` is 500 KB.
   """
-  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
+  def line_stream_from_chunk_read(path, chunk_size \\ 100_000_000) do
     File.stream!(path, [], chunk_size)
     |> Stream.transform("", fn chunk, acc ->
       chunk = String.replace(chunk, "\r\n", "\n")
@@ -67,37 +67,33 @@ defmodule LixLookup do
     end)
   end
 
-  defp build_map_from_line_stream(line_stream) do
-    build =
-      try do
-        map =
-          line_stream
-          |> format_strings()
-          |> Enum.reduce(%{}, fn row, map ->
-            [_, _, _, _, _, id, _, email | _] = row
-            Map.put(map, id, String.downcase(email))
-          end)
-
-        {:ok, map}
-      rescue
-        e -> {:error, Exception.message(e)}
+  defp build_map_from_lines(chunk_of_lines) when is_list(chunk_of_lines) do
+    # Process each line in the chunk and merge the results into a single map
+    Enum.reduce(chunk_of_lines, %{}, fn line, map ->
+      case parse_line(line) do
+        {:ok, id, email} ->
+          Map.put(map, id, String.downcase(email))
+        {:error, _} ->
+          # IO.puts(reason)
+          map
       end
-
-    case build do
-      {:ok, map} -> map
-      {:error, _} -> %{}
-    end
+    end)
   end
 
-  defp format_strings(strings) do
-    strings
-    |> Stream.map(&String.trim(&1))
-    |> Stream.map(&String.split(&1, ","))
+  defp parse_line(line) do
+    # Split the line into parts and extract the ID and email
+    case String.split(line, ",") do
+      [_, _, _, _, _, id, _, email | _] ->
+        {:ok, id, email}
+      _ ->
+        {:error, "Invalid line format: #{inspect(line)}"}
+    end
   end
 
   defp match_staff_to_email(staff_list, cache_pid) do
     staff_list
-    |> format_strings()
+    |> Stream.map(&String.trim(&1))
+    |> Stream.map(&String.split(&1, ","))
     |> Enum.reject(fn row -> row == [] end)
     |> Staff.lookup_staff_emails(cache_pid)
   end
