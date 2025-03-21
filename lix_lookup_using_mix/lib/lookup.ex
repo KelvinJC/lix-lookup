@@ -22,7 +22,7 @@ defmodule LixLookup do
 
   def main() do
     {:ok, staff_cache_pid} = build_staff_map(@all_staff_list)
-    write_region_staff_data(@region_staff_list, staff_cache_pid, @region_staff_emails)
+    get_region_staff_emails(@region_staff_list, staff_cache_pid, @region_staff_emails)
   end
 
   defp build_staff_map(all_staff) do
@@ -34,7 +34,7 @@ defmodule LixLookup do
     |> Staff.start_link()
   end
 
-  defp write_region_staff_data(region_staff, staff_cache_pid, path) do
+  defp get_region_staff_emails(region_staff, staff_cache_pid, path) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
@@ -95,7 +95,7 @@ defmodule LixLookup do
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
     |> Enum.reject(fn row -> row == [] end)
-    |> Staff.lookup_staff_emails(cache_pid)
+    |> Staff.match_staff_id_to_emails(cache_pid)
   end
 
   defp write_stream_to_csv(stream_data, csv_path, opts) do
@@ -128,19 +128,7 @@ defmodule Staff do
     Agent.get(agent, fn {_all_staff, matched_staff} -> matched_staff end)
   end
 
-  def find_staff_email([_, id, name, _], agent) do
-    Agent.get(agent, fn {all_staff, _matched_staff} ->
-      email = Map.get(all_staff, id)
-
-      if email == nil do
-        {:error, {:email_not_found}}
-      else
-        {:ok, {id, name, email}}
-      end
-    end)
-  end
-
-  def lookup_staff_emails(staff, agent) do
+  def match_staff_id_to_emails(staff, agent) do
     lookup = fn staff, all_staff ->
       staff
       |> Enum.map(fn [_, id, name, _] ->
