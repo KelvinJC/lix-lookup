@@ -31,7 +31,7 @@ defmodule LixLookup do
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
     |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: :infinity)
-    |> Enum.to_list()
+    |> Stream.run()
   end
 
   defp get_region_staff_emails(region_staff, path, staff_cache_pid) do
@@ -42,7 +42,7 @@ defmodule LixLookup do
       max_concurrency: 8,
       timeout: :infinity
     )
-    |> Enum.count()
+    |> Stream.run()
 
     Staff.get_all_matched_staff(staff_cache_pid)
     |> write_stream_to_csv(path, use_headers: true)
