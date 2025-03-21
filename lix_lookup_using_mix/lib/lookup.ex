@@ -21,17 +21,17 @@ defmodule LixLookup do
   end
 
   def main() do
-    {:ok, staff_cache_pid} = build_staff_map(@all_staff_list)
+    {:ok, staff_cache_pid} = Staff.start_link()
+    build_staff_map(@all_staff_list, staff_cache_pid)
     get_region_staff_emails(@region_staff_list, staff_cache_pid, @region_staff_emails)
   end
 
-  defp build_staff_map(all_staff) do
+  defp build_staff_map(all_staff, pid) do
     all_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
-    |> Task.async_stream(&build_map_from_lines/1, max_concurrency: 6, timeout: 30_000)
-    |> Enum.reduce(%{}, fn {:ok, stream_result}, acc -> Map.merge(acc, stream_result) end)
-    |> Staff.start_link()
+    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: :infinity)
+    |> Enum.to_list()
   end
 
   defp get_region_staff_emails(region_staff, staff_cache_pid, path) do
@@ -39,7 +39,7 @@ defmodule LixLookup do
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
     |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid),
-      max_concurrency: 6,
+      max_concurrency: 8,
       timeout: :infinity
     )
     |> Enum.count()
@@ -53,7 +53,7 @@ defmodule LixLookup do
   and output a new stream of lines from each chunk. \\
   Default value of `chunk_size` is 500 KB.
   """
-  def line_stream_from_chunk_read(path, chunk_size \\ 100_000_000) do
+  def line_stream_from_chunk_read(path, chunk_size \\ 10_000_000) do
     File.stream!(path, [], chunk_size)
     |> Stream.transform("", fn chunk, acc ->
       chunk = String.replace(chunk, "\r\n", "\n")
@@ -67,8 +67,9 @@ defmodule LixLookup do
     end)
   end
 
-  defp build_map_from_lines(chunk_of_lines) when is_list(chunk_of_lines) do
-    # Process each line in the chunk and merge the results into a single map
+  defp build_and_cache_map(chunk_of_lines, cache_pid) when is_list(chunk_of_lines) do
+    # Process each line in the chunk
+    # merge the results into a single map & cache map in agent
     Enum.reduce(chunk_of_lines, %{}, fn line, map ->
       case parse_line(line) do
         {:ok, id, email} ->
@@ -78,6 +79,7 @@ defmodule LixLookup do
           map
       end
     end)
+    |> Staff.update_all_staff_map(cache_pid)
   end
 
   defp parse_line(line) do
@@ -112,8 +114,8 @@ defmodule LixLookup do
 end
 
 defmodule Staff do
-  def start_link(map) do
-    Agent.start_link(fn -> {map, []} end)
+  def start_link() do
+    Agent.start_link(fn -> {%{}, []} end)
   end
 
   def get_state(agent) do
@@ -126,6 +128,12 @@ defmodule Staff do
 
   def get_all_matched_staff(agent) do
     Agent.get(agent, fn {_all_staff, matched_staff} -> matched_staff end)
+  end
+
+  def update_all_staff_map(staff, agent) when is_map(staff) do
+    Agent.update(agent, fn {all_staff, matched_staff} ->
+      {Map.merge(staff, all_staff), matched_staff}
+    end)
   end
 
   def match_staff_id_to_emails(staff, agent) do
