@@ -42,20 +42,10 @@ defmodule LixLookup do
       max_concurrency: 15,
       timeout: :infinity
     )
-    # |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ merge_stream_result_enum(stream_result) end)
     |> Enum.count()
 
     Staff.get_all_matched_staff(staff_cache_pid)
     |> write_stream_to_csv(path, use_headers: true)
-  end
-
-  def merge_stream_result_enum(stream_result_enum) do
-    Enum.reduce(stream_result_enum, [], fn {tag, row}, lines ->
-      case tag do
-        :ok -> lines ++ [row]
-        :error -> lines
-      end
-    end)
   end
 
   @doc """
