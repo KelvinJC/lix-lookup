@@ -23,7 +23,7 @@ defmodule LixLookup do
   def main() do
     {:ok, staff_cache_pid} = Staff.start_link()
     build_staff_map(@all_staff_list, staff_cache_pid)
-    get_region_staff_emails(@region_staff_list, @region_staff_emails, staff_cache_pid)
+    match_region_staff_emails_and_write_to_csv(@region_staff_list, @region_staff_emails, staff_cache_pid)
   end
 
   defp build_staff_map(all_staff, pid) do
@@ -34,7 +34,7 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp get_region_staff_emails(region_staff, path, staff_cache_pid) do
+  defp match_region_staff_emails_and_write_to_csv(region_staff, path, staff_cache_pid) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
