@@ -43,7 +43,7 @@ defmodule LixLookup do
     - `path`: The file path where the CSV output will be written.
     - `staff_cache_pid`: The PID of the cache process used to look up staff emails.
   """
-  defp match_region_staff_emails_and_write_to_csv(region_staff, path, staff_cache_pid) do
+  def match_region_staff_emails_and_write_to_csv(region_staff, path, staff_cache_pid) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
