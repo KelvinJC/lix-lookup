@@ -21,7 +21,7 @@ defmodule LixLookup do
   end
 
   def main() do
-    {:ok, cache_register_pid} = CacheRegister.start_link(8)
+    {:ok, cache_register_pid} = StaffCacheRegister.start_link(8)
     build_staff_map(@all_staff_list, cache_register_pid)
     match_region_staff_emails_and_write_to_csv(@region_staff_list, @region_staff_emails, cache_register_pid)
   end
@@ -54,7 +54,7 @@ defmodule LixLookup do
     |> Stream.run()
 
     # TODO: need to assemble data from all Agents
-    # Staff.get_all_matched_staff(staff_cache_pid)
+    # StaffCache.get_all_matched_staff(staff_cache_pid)
     # |> write_stream_to_csv(path, use_headers: true)
   end
 
@@ -90,8 +90,8 @@ defmodule LixLookup do
             map
         end
       end)
-    CacheRegister.get_next_pid(reg_pid)
-    |> Staff.update_all_staff_map(map)
+    StaffCacheRegister.get_next_cache(reg_pid)
+    |> StaffCache.update_all_staff_map(map)
   end
 
   defp parse_line(line) do
@@ -105,13 +105,13 @@ defmodule LixLookup do
   end
 
   defp match_staff_to_email(staff_list, reg_pid) do
-    cache_pid = CacheRegister.get_next_pid(reg_pid)
+    cache_pid = StaffCacheRegister.get_next_cache(reg_pid)
 
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
     |> Enum.reject(fn row -> row == [] end)
-    |> Staff.match_staff_id_to_emails(cache_pid)
+    |> StaffCache.match_staff_id_to_emails(cache_pid)
   end
 
   defp write_stream_to_csv(stream_data, csv_path, opts) do
@@ -127,46 +127,46 @@ defmodule LixLookup do
   end
 end
 
-defmodule CacheRegister do
+defmodule StaffCacheRegister do
   def start_link(num_caches) do
-    cache_pids = create_caches(num_caches)
-    [next_pid | rest_pids] = cache_pids
-    Agent.start(fn -> {next_pid, rest_pids, cache_pids} end)
+    caches = create_caches(num_caches)
+    [next_cache | rest_caches] = caches
+    Agent.start(fn -> {next_cache, rest_caches, caches} end)
   end
 
   defp create_caches(num) do
-    Enum.map(1..num, fn _ -> Staff.start_link() end)
+    Enum.map(1..num, fn _ -> StaffCache.start_link() end)
     |> Enum.map(fn {:ok, cache_pid} -> cache_pid end)
   end
 
-  def get_next_pid(agent) do
-    {next_pid, _, _} = get_and_update(agent)
-    next_pid
+  def get_next_cache(agent) do
+    {next_cache, _, _} = get_and_update(agent)
+    next_cache
   end
 
   defp get_and_update(agent) do
     Agent.get_and_update(agent,
-      fn {_current_pid, rest_pids, cache_pids} = state ->
-      new_state = loop_through_pids(rest_pids, cache_pids)
-      {state, new_state}
+      fn {_current_cache, rest_caches, caches} = old_state ->
+      new_state = loop_through_caches(rest_caches, caches)
+      {old_state, new_state}
     end)
   end
 
-  defp loop_through_pids(remaining_pids, original_pids_list) do
-    # If remaining_pids is empty, reset to the original list of pids
-    new_remaining_pids =
-      if remaining_pids == [] do
-        original_pids_list
+  defp loop_through_caches(previous_remaining_caches, original_caches) do
+    # If previous_remaining_caches is empty, reset to the original list of caches
+    new_remaining_caches =
+      if previous_remaining_caches == [] do
+        original_caches
       else
-        remaining_pids
+        previous_remaining_caches
       end
 
-    [next_pid | rest_pids] = new_remaining_pids
-    {next_pid, rest_pids, original_pids_list}
+    [next_cache | rest_caches] = new_remaining_caches
+    {next_cache, rest_caches, original_caches}
   end
 end
 
-defmodule Staff do
+defmodule StaffCache do
   def start_link() do
     Agent.start_link(fn -> {%{}, []} end)
   end
