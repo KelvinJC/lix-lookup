@@ -35,7 +35,7 @@ defmodule LixLookup do
   end
 
   @doc """
-    Processes a stream of region staff data, matches each staff member to an email using a cache,
+    Processes data of staff in region, matches each staff member to an email using a cache,
     and writes the matched data to a CSV file.
 
     ## Parameters
