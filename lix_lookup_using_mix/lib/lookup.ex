@@ -21,9 +21,9 @@ defmodule LixLookup do
   end
 
   def main() do
-    {:ok, staff_cache_pid} = Staff.start_link()
-    build_staff_map(@all_staff_list, staff_cache_pid)
-    match_region_staff_emails_and_write_to_csv(@region_staff_list, @region_staff_emails, staff_cache_pid)
+    {:ok, cache_register_pid} = CacheRegister.start_link(8)
+    build_staff_map(@all_staff_list, cache_register_pid)
+    match_region_staff_emails_and_write_to_csv(@region_staff_list, @region_staff_emails, cache_register_pid)
   end
 
   defp build_staff_map(all_staff, pid) do
@@ -43,18 +43,19 @@ defmodule LixLookup do
     - `path`: The file path where the CSV output will be written.
     - `staff_cache_pid`: The PID of the cache process used to look up staff emails.
   """
-  def match_region_staff_emails_and_write_to_csv(region_staff, path, staff_cache_pid) do
+  def match_region_staff_emails_and_write_to_csv(region_staff, path, reg_pid) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
-    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid),
+    |> Task.async_stream(&match_staff_to_email(&1, reg_pid),
       max_concurrency: 8,
       timeout: 30_000
     )
     |> Stream.run()
 
-    Staff.get_all_matched_staff(staff_cache_pid)
-    |> write_stream_to_csv(path, use_headers: true)
+    # TODO: need to assemble data from all Agents
+    # Staff.get_all_matched_staff(staff_cache_pid)
+    # |> write_stream_to_csv(path, use_headers: true)
   end
 
   @doc """
@@ -76,19 +77,21 @@ defmodule LixLookup do
     end)
   end
 
-  defp build_and_cache_map(chunk_of_lines, cache_pid) when is_list(chunk_of_lines) do
+  defp build_and_cache_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
     # Process each line in the chunk
     # merge the results into a single map & cache map in agent
-    Enum.reduce(chunk_of_lines, %{}, fn line, map ->
-      case parse_line(line) do
-        {:ok, id, email} ->
-          Map.put(map, id, String.downcase(email))
-        {:error, _} ->
-          # IO.puts(reason)
-          map
-      end
-    end)
-    |> Staff.update_all_staff_map(cache_pid)
+    map =
+      Enum.reduce(chunk_of_lines, %{}, fn line, map ->
+        case parse_line(line) do
+          {:ok, id, email} ->
+            Map.put(map, id, String.downcase(email))
+          {:error, _} ->
+            # IO.puts(reason)
+            map
+        end
+      end)
+    CacheRegister.get_next_pid(reg_pid)
+    |> Staff.update_all_staff_map(map)
   end
 
   defp parse_line(line) do
@@ -101,7 +104,9 @@ defmodule LixLookup do
     end
   end
 
-  defp match_staff_to_email(staff_list, cache_pid) do
+  defp match_staff_to_email(staff_list, reg_pid) do
+    cache_pid = CacheRegister.get_next_pid(reg_pid)
+
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
@@ -121,56 +126,6 @@ defmodule LixLookup do
     |> Enum.into(File.stream!(csv_path))
   end
 end
-
-defmodule Staff do
-  def start_link() do
-    Agent.start_link(fn -> {%{}, []} end)
-  end
-
-  def get_state(agent) do
-    Agent.get(agent, fn {all_staff, matched_staff} -> {all_staff, matched_staff} end)
-  end
-
-  def get_all_staff(agent) do
-    Agent.get(agent, fn {all_staff, _matched_staff} -> all_staff end)
-  end
-
-  def get_all_matched_staff(agent) do
-    Agent.get(agent, fn {_all_staff, matched_staff} -> matched_staff end)
-  end
-
-  def update_all_staff_map(staff, agent) when is_map(staff) do
-    Agent.update(agent, fn {all_staff, matched_staff} ->
-      {Map.merge(staff, all_staff), matched_staff}
-    end)
-  end
-
-  def match_staff_id_to_emails(staff, agent) do
-    lookup = fn staff, all_staff ->
-      staff
-      |> Enum.map(fn [_, id, name, _] ->
-          email = Map.get(all_staff, id)
-          if email == nil do
-            {:error, "Staff ID does not match any record."}
-          else
-            {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
-          end
-        end)
-      |> Enum.map(fn {tag, row} ->
-        case tag do
-          :ok -> row
-          :error -> []
-        end
-      end)
-    end
-
-    Agent.update(agent, fn {all_staff, matched_staff} ->
-      new_matched_staff = lookup.(staff, all_staff)
-      {all_staff, matched_staff ++ new_matched_staff}
-    end)
-  end
-end
-
 
 defmodule CacheRegister do
   def start_link(num_caches) do
@@ -208,5 +163,54 @@ defmodule CacheRegister do
 
     [next_pid | rest_pids] = new_remaining_pids
     {next_pid, rest_pids, original_pids_list}
+  end
+end
+
+defmodule Staff do
+  def start_link() do
+    Agent.start_link(fn -> {%{}, []} end)
+  end
+
+  def get_state(agent) do
+    Agent.get(agent, fn {all_staff, matched_staff} -> {all_staff, matched_staff} end)
+  end
+
+  def get_all_staff(agent) do
+    Agent.get(agent, fn {all_staff, _matched_staff} -> all_staff end)
+  end
+
+  def get_all_matched_staff(agent) do
+    Agent.get(agent, fn {_all_staff, matched_staff} -> matched_staff end)
+  end
+
+  def update_all_staff_map(agent, staff) when is_map(staff) do
+    Agent.update(agent, fn {all_staff, matched_staff} ->
+      {Map.merge(staff, all_staff), matched_staff}
+    end)
+  end
+
+  def match_staff_id_to_emails(staff, agent) do
+    lookup = fn staff, all_staff ->
+      staff
+      |> Enum.map(fn [_, id, name, _] ->
+          email = Map.get(all_staff, id)
+          if email == nil do
+            {:error, "Staff ID does not match any record."}
+          else
+            {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+          end
+        end)
+      |> Enum.map(fn {tag, row} ->
+        case tag do
+          :ok -> row
+          :error -> []
+        end
+      end)
+    end
+
+    Agent.update(agent, fn {all_staff, matched_staff} ->
+      new_matched_staff = lookup.(staff, all_staff)
+      {all_staff, matched_staff ++ new_matched_staff}
+    end)
   end
 end
