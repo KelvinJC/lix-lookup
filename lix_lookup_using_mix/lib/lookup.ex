@@ -21,7 +21,7 @@ defmodule LixLookup do
   end
 
   def create_caches() do
-    Enum.map(0..8, fn -> Staff.start_link() end)
+    Enum.map(1..8, fn _ -> Staff.start_link() end)
     |> Enum.map(fn {:ok, pid} -> pid end)
   end
 
