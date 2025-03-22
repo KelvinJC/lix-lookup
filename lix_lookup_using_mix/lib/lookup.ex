@@ -35,11 +35,11 @@ defmodule LixLookup do
   end
 
   @doc """
-    Processes a stream of region staff data, matches each staff member to an email using a cache,
+    Processes data of staff in region, matches each staff member to an email using a cache,
     and writes the matched data to a CSV file.
 
     ## Parameters
-    - `region_staff`: The input data (stream or chunked) representing region staff.
+    - `region_staff`: The input data CSV file path containing region staff.
     - `path`: The file path where the CSV output will be written.
     - `staff_cache_pid`: The PID of the cache process used to look up staff emails.
   """
@@ -49,7 +49,7 @@ defmodule LixLookup do
     |> Stream.chunk_every(5000)
     |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid),
       max_concurrency: 8,
-      timeout: :infinity
+      timeout: 30_000
     )
     |> Stream.run()
 
