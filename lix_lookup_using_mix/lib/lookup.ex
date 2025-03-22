@@ -139,7 +139,7 @@ defmodule StaffCacheRegister do
     |> Enum.map(fn {:ok, cache_pid} -> cache_pid end)
   end
 
-  def get_all_caches do
+  def get_all_caches(agent) do
     Agent.get(agent, fn {_, _, caches} -> caches end)
   end
 
