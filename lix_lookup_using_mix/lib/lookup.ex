@@ -20,11 +20,6 @@ defmodule LixLookup do
     result
   end
 
-  def create_caches() do
-    Enum.map(1..8, fn _ -> Staff.start_link() end)
-    |> Enum.map(fn {:ok, pid} -> pid end)
-  end
-
   def main() do
     {:ok, staff_cache_pid} = Staff.start_link()
     build_staff_map(@all_staff_list, staff_cache_pid)
@@ -173,5 +168,45 @@ defmodule Staff do
       new_matched_staff = lookup.(staff, all_staff)
       {all_staff, matched_staff ++ new_matched_staff}
     end)
+  end
+end
+
+
+defmodule CacheRegister do
+  def start_link(num_caches) do
+    cache_pids = create_caches(num_caches)
+    [next_pid | rest_pids] = cache_pids
+    Agent.start(fn -> {next_pid, rest_pids, cache_pids} end)
+  end
+
+  defp create_caches(num) do
+    Enum.map(1..num, fn _ -> Staff.start_link() end)
+    |> Enum.map(fn {:ok, cache_pid} -> cache_pid end)
+  end
+
+  def get_next_pid(agent) do
+    {next_pid, _, _} = get_and_update(agent)
+    next_pid
+  end
+
+  defp get_and_update(agent) do
+    Agent.get_and_update(agent,
+      fn {_current_pid, rest_pids, cache_pids} = state ->
+      new_state = loop_through_pids(rest_pids, cache_pids)
+      {state, new_state}
+    end)
+  end
+
+  defp loop_through_pids(remaining_pids, original_pids_list) do
+    # If remaining_pids is empty, reset to the original list of pids
+    new_remaining_pids =
+      if remaining_pids == [] do
+        original_pids_list
+      else
+        remaining_pids
+      end
+
+    [next_pid | rest_pids] = new_remaining_pids
+    {next_pid, rest_pids, original_pids_list}
   end
 end
