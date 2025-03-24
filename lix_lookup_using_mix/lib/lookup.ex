@@ -191,7 +191,7 @@ defmodule StaffCache do
       matched_staff end)
   end
 
-  def update_all_staff_map(agent, staff)  do
+  def update_all_staff_map(agent, staff) when is_map(staff) do
     Agent.update(agent, fn {all_staff, matched_staff} ->
       {Map.merge(staff, all_staff), matched_staff}
     end)
