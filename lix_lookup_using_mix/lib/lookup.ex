@@ -10,6 +10,9 @@
 
 defmodule LixLookup do
   @pwd "./"
+  # @all_staff_list @pwd <> "lib/employee_records_1B_unique_staff_id.csv"
+  # @region_staff_list @pwd <> "lib/selected_records_32k.csv"
+  # @all_staff_list @pwd <> "all_staff_1MM.csv"
   @all_staff_list @pwd <> "all_staff.csv"
   @region_staff_list @pwd <> "region_staff.csv"
   @region_staff_emails @pwd <> "region_staff_email.csv"
@@ -53,19 +56,19 @@ defmodule LixLookup do
   end
 
   def match_region_staff_emails(region_staff, reg_pid) do
+    caches = StaffCacheRegister.get_all_caches(reg_pid)
+
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
-    |> Task.async_stream(&match_staff_to_email(&1, reg_pid),
-      max_concurrency: 8,
-      timeout: 30_000
+    |> Task.async_stream(&match_staff_to_email(&1, caches),
+    max_concurrency: 8,
+    timeout: 30_000
     )
     |> Stream.run()
   end
 
-  defp match_staff_to_email(staff_list, reg_pid) do
-    caches = StaffCacheRegister.get_all_caches(reg_pid)
-
+  defp match_staff_to_email(staff_list, caches) do
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
