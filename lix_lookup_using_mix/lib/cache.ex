@@ -1,4 +1,3 @@
-
 defmodule StaffCacheRegister do
   def start_link(num_caches) do
     caches = create_caches(num_caches)
@@ -60,14 +59,14 @@ defmodule StaffCache do
       matched_staff end)
   end
 
-  def update_all_staff_map(agent, staff) when is_map(staff) do
+  def update_all_staff(agent, staff) when is_map(staff) do
     Agent.update(agent, fn {all_staff, matched_staff} ->
       {Map.merge(staff, all_staff), matched_staff}
     end)
   end
 
-  def match_staff_id_to_emails(staff, agent) do
-    lookup = fn staff, all_staff ->
+  def update_matched_staff(staff, agent) do
+    match_staff_id_to_emails = fn staff, all_staff ->
       staff
       |> Enum.map(fn [_, id, name, _] ->
           email = Map.get(all_staff, id)
@@ -86,7 +85,7 @@ defmodule StaffCache do
     end
 
     Agent.update(agent, fn {all_staff, matched_staff} ->
-      new_matched_staff = lookup.(staff, all_staff)
+      new_matched_staff = match_staff_id_to_emails.(staff, all_staff)
       {all_staff, matched_staff ++ new_matched_staff}
     end)
   end
