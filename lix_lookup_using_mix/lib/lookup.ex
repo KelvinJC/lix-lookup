@@ -31,7 +31,7 @@ defmodule LixLookup do
 
   defp build_staff_map(all_staff, pid) do
     all_staff
-    |> line_stream_from_chunk_read()
+    |> FileOps.line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
     |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: 30_000)
     |> Stream.run()
@@ -66,7 +66,7 @@ defmodule LixLookup do
 
   def match_region_staff_emails(region_staff, caches) do
     region_staff
-    |> line_stream_from_chunk_read()
+    |> FileOps.line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
     |> Task.async_stream(&match_staff_to_email(&1, caches),
     max_concurrency: 8,
@@ -86,37 +86,6 @@ defmodule LixLookup do
   def assemble_matched_staff_and_export_to_csv(path, caches) do
     caches
     |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
-    |> write_stream_to_csv(path, use_headers: true)
-  end
-
-  @doc """
-  Read file at `path` in chunks of given size (binary mode) \\
-  and output a new stream of lines from each chunk. \\
-  Default value of `chunk_size` is 500 KB.
-  """
-  def line_stream_from_chunk_read(path, chunk_size \\ 10_000_000) do
-    File.stream!(path, [], chunk_size)
-    |> Stream.transform("", fn chunk, acc ->
-      chunk = String.replace(chunk, "\r\n", "\n")
-      new_chunk = (acc <> chunk) |> String.split("\n", trim: true)
-
-      case new_chunk do
-        [] -> {[], ""}
-        [last_line] -> {[], last_line}
-        [last_line | lines] -> {lines, last_line}
-      end
-    end)
-  end
-
-  defp write_stream_to_csv(stream_data, csv_path, opts) do
-    headers = ["staff_id, name, email\n"]
-    use_headers = Keyword.get(opts, :use_headers, false)
-
-    if use_headers == true do
-      Stream.concat(headers, stream_data)
-    else
-      stream_data
-    end
-    |> Enum.into(File.stream!(csv_path))
+    |> FileOps.write_stream_to_csv(path)
   end
 end
