@@ -55,7 +55,8 @@ defmodule LixLookup do
     |> Task.async_stream(&build_and_cache_map(&1, pid),
       max_concurrency: @max_concurrency,
       timeout: @proc_time_out,
-      on_timeout: :kill_task)
+      on_timeout: :kill_task
+    )
     |> Stream.run()
   end
 
@@ -67,11 +68,13 @@ defmodule LixLookup do
         case parse_line(line) do
           {:ok, id, email} ->
             Map.put(map, id, String.downcase(email))
+
           {:error, _} ->
             # IO.puts(reason)
             map
         end
       end)
+
     StaffCacheRegister.get_cache(reg_pid)
     |> StaffCache.add_staff(map)
   end
@@ -81,6 +84,7 @@ defmodule LixLookup do
     case String.split(line, ",") do
       [_, _, _, _, _, id, _, email | _] ->
         {:ok, id, email}
+
       _ ->
         {:error, "Invalid line format: #{inspect(line)}"}
     end
@@ -93,7 +97,8 @@ defmodule LixLookup do
     |> Task.async_stream(&match_per_cache(&1, caches),
       max_concurrency: @max_concurrency,
       timeout: @proc_time_out,
-      on_timeout: :kill_task)
+      on_timeout: :kill_task
+    )
     |> Stream.run()
   end
 

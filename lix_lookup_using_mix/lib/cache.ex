@@ -20,11 +20,14 @@ defmodule StaffCacheRegister do
   end
 
   defp get_next_cache(agent) do
-    Agent.get_and_update(agent,
-    fn {_current_cache, rest_caches, caches} = old_state ->
-      new_state = loop_through_caches(rest_caches, caches)
-      {old_state, new_state} # Agent.get_and_update/3 only returns the first element of tuple result
-    end)
+    Agent.get_and_update(
+      agent,
+      fn {_current_cache, rest_caches, caches} = old_state ->
+        new_state = loop_through_caches(rest_caches, caches)
+        # Agent.get_and_update/3 only returns the first element of tuple result
+        {old_state, new_state}
+      end
+    )
   end
 
   defp loop_through_caches(previous_remaining_caches, original_caches) do
@@ -56,7 +59,8 @@ defmodule StaffCache do
 
   def get_all_matched_staff(agent) do
     Agent.get(agent, fn {_all_staff, matched_staff} ->
-      matched_staff end)
+      matched_staff
+    end)
   end
 
   def add_staff(agent, staff) when is_map(staff) do
@@ -75,13 +79,14 @@ defmodule StaffCache do
   defp match_staff_id_to_emails(staff, all_staff) do
     staff
     |> Enum.map(fn [_, id, name, _] ->
-        email = Map.get(all_staff, id)
-        if email == nil do
-          {:error, "Staff ID does not match any record."}
-        else
-          {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
-        end
-      end)
+      email = Map.get(all_staff, id)
+
+      if email == nil do
+        {:error, "Staff ID does not match any record."}
+      else
+        {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+      end
+    end)
     |> Enum.map(fn {tag, row} ->
       case tag do
         :ok -> row
