@@ -13,13 +13,17 @@ defmodule LixLookup do
   @all_staff_list @pwd <> "all_staff.csv"
   @region_staff_list @pwd <> "region_staff.csv"
   @region_staff_emails @pwd <> "region_staff_email.csv"
-
   @max_concurrency System.schedulers()
   @num_caches @max_concurrency
-  @proc_time_out 30_000
-  @high_read_chunk_size 10_000_000 # 10 MB
-  @read_chunk_size 500_000
   @lines_per_chunk 5000
+  @read_chunk_size 500_000  # 500 KB
+  @proc_time_out 30_000     # 30,000 milliseconds == 30 seconds
+
+  # -- for use in tests with CSV files in excess of 55 million records
+  # @high_read_chunk_size 10_000_000 # 10 MB
+  # @read_chunk_size @high_read_chunk_size
+  # @high_proc_time_out :infinity
+  # @proc_time_out @high_proc_time_out
 
   def run do
     {time, result} = :timer.tc(fn -> main() end)
@@ -40,7 +44,10 @@ defmodule LixLookup do
     all_staff
     |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
     |> Stream.chunk_every(@lines_per_chunk)
-    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: @max_concurrency, timeout: @proc_time_out)
+    |> Task.async_stream(&build_and_cache_map(&1, pid),
+    max_concurrency: @max_concurrency,
+    timeout: @proc_time_out,
+    on_timeout: :kill_task)
     |> Stream.run()
   end
 
