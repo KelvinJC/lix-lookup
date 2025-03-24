@@ -1,19 +1,19 @@
 # # Quick recap of implementation.
-# # 1. The main process creates a agent process `StaffCacheRegister` responsible for
-# #    generating and tracking multiple `StaffCache` agent processes
-# # 2. Then the main process streams data from a file.
+# # 1. The main process creates an agent process `StaffCacheRegister` responsible for
+# #    generating and tracking multiple agent processes to serve as memory caches.
+# # 2. The main process streams rows of data from a file.
 # # 3. It spawns multiple asynchronous processes, each responsible for:
-# #    - Receiving a chunk of streamed staff data.
-# #    - Constructing a key-value map from the parsed lines.
-# #    - Querying the register process for the PID of a `StaffCache` process
+# #    - Receiving and parsing rows of staff data.
+# #    - Constructing a key-value map from the parsed rows.
+# #    - Querying the `StaffCacheRegister` for the PID of a `StaffCache` process
 # #    - Sending the map to the `StaffCache` process for caching.
-# # 4. The main process streams data from a second file.
+# # 4. The main process streams lines of data from a second file.
 # # 5. It spawns another batch of async processes, each responsible for:
-# #    - Receiving a chunk of streamed staff data.
+# #    - Receiving rows of streamed staff data.
 # #    - Querying each `StaffCache` agent process to match staff with their emails.
 # # 6. Each `StaffCache` process matches staff to their email records by performing lookups of each line against
 #      the key value map in its internal state.
-#      - it maintains a list of matched staff records.
+#      - It maintains a list of matched staff records.
 # # 7. The main process retrieves the matched data from all caches and exports it to a CSV file.
 
 defmodule LixLookup do
