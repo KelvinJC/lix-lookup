@@ -53,9 +53,9 @@ defmodule LixLookup do
     |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
     |> Stream.chunk_every(@lines_per_chunk)
     |> Task.async_stream(&build_and_cache_map(&1, pid),
-    max_concurrency: @max_concurrency,
-    timeout: @proc_time_out,
-    on_timeout: :kill_task)
+      max_concurrency: @max_concurrency,
+      timeout: @proc_time_out,
+      on_timeout: :kill_task)
     |> Stream.run()
   end
 
@@ -91,9 +91,9 @@ defmodule LixLookup do
     |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
     |> Stream.chunk_every(@lines_per_chunk)
     |> Task.async_stream(&match_per_cache(&1, caches),
-    max_concurrency: @max_concurrency,
-    timeout: @proc_time_out
-    )
+      max_concurrency: @max_concurrency,
+      timeout: @proc_time_out,
+      on_timeout: :kill_task)
     |> Stream.run()
   end
 
