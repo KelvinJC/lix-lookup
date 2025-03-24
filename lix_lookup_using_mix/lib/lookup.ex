@@ -58,7 +58,7 @@ defmodule LixLookup do
         end
       end)
     StaffCacheRegister.get_next_cache(reg_pid)
-    |> StaffCache.update_all_staff_map(map)
+    |> StaffCache.add_staff(map)
   end
 
   defp parse_line(line) do
@@ -87,7 +87,7 @@ defmodule LixLookup do
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
     |> Enum.reject(fn row -> row == [] end)
-    |> (fn staff -> Enum.map(caches, &StaffCache.match_staff_id_to_emails(staff, &1)) end).()
+    |> (fn staff -> Enum.map(caches, &StaffCache.match_staff(&1, staff)) end).()
   end
 
   def assemble_matched_staff_and_export_to_csv(path, caches) do
