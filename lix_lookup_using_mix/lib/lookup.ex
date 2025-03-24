@@ -75,14 +75,14 @@ defmodule LixLookup do
     region_staff
     |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
     |> Stream.chunk_every(@lines_per_chunk)
-    |> Task.async_stream(&match_staff_to_email(&1, caches),
+    |> Task.async_stream(&match_per_cache(&1, caches),
     max_concurrency: @max_concurrency,
     timeout: @proc_time_out
     )
     |> Stream.run()
   end
 
-  defp match_staff_to_email(staff_list, caches) do
+  defp match_per_cache(staff_list, caches) do
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
