@@ -10,9 +10,6 @@
 
 defmodule LixLookup do
   @pwd "./"
-  # @all_staff_list @pwd <> "lib/employee_records_1B_unique_staff_id.csv"
-  # @region_staff_list @pwd <> "lib/selected_records_32k.csv"
-  # @all_staff_list @pwd <> "all_staff_1MM.csv"
   @all_staff_list @pwd <> "all_staff.csv"
   @region_staff_list @pwd <> "region_staff.csv"
   @region_staff_emails @pwd <> "region_staff_email.csv"
@@ -26,8 +23,10 @@ defmodule LixLookup do
   def main() do
     {:ok, cache_register_pid} = StaffCacheRegister.start_link(8)
     build_staff_map(@all_staff_list, cache_register_pid)
-    match_region_staff_emails(@region_staff_list, cache_register_pid)
-    assemble_matched_staff_and_export_to_csv(@region_staff_emails, cache_register_pid)
+
+    caches = StaffCacheRegister.get_all_caches(cache_register_pid)
+    match_region_staff_emails(@region_staff_list, caches)
+    assemble_matched_staff_and_export_to_csv(@region_staff_emails, caches)
   end
 
   defp build_staff_map(all_staff, pid) do
@@ -55,9 +54,17 @@ defmodule LixLookup do
     |> StaffCache.update_all_staff_map(map)
   end
 
-  def match_region_staff_emails(region_staff, reg_pid) do
-    caches = StaffCacheRegister.get_all_caches(reg_pid)
+  defp parse_line(line) do
+    # Split the line into parts and extract the ID and email
+    case String.split(line, ",") do
+      [_, _, _, _, _, id, _, email | _] ->
+        {:ok, id, email}
+      _ ->
+        {:error, "Invalid line format: #{inspect(line)}"}
+    end
+  end
 
+  def match_region_staff_emails(region_staff, caches) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
@@ -76,8 +83,8 @@ defmodule LixLookup do
     |> (fn staff -> Enum.map(caches, &StaffCache.match_staff_id_to_emails(staff, &1)) end).()
   end
 
-  def assemble_matched_staff_and_export_to_csv(path, reg_pid) do
-    StaffCacheRegister.get_all_caches(reg_pid)
+  def assemble_matched_staff_and_export_to_csv(path, caches) do
+    caches
     |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
     |> write_stream_to_csv(path, use_headers: true)
   end
@@ -87,7 +94,7 @@ defmodule LixLookup do
   and output a new stream of lines from each chunk. \\
   Default value of `chunk_size` is 500 KB.
   """
-  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
+  def line_stream_from_chunk_read(path, chunk_size \\ 10_000_000) do
     File.stream!(path, [], chunk_size)
     |> Stream.transform("", fn chunk, acc ->
       chunk = String.replace(chunk, "\r\n", "\n")
@@ -99,16 +106,6 @@ defmodule LixLookup do
         [last_line | lines] -> {lines, last_line}
       end
     end)
-  end
-
-  defp parse_line(line) do
-    # Split the line into parts and extract the ID and email
-    case String.split(line, ",") do
-      [_, _, _, _, _, id, _, email | _] ->
-        {:ok, id, email}
-      _ ->
-        {:error, "Invalid line format: #{inspect(line)}"}
-    end
   end
 
   defp write_stream_to_csv(stream_data, csv_path, opts) do
