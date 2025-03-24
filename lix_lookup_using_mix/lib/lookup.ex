@@ -35,6 +35,23 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
+  defp build_and_cache_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
+    # Process each line in the chunk
+    # merge the results into a single map & cache map in agent
+    map =
+      Enum.reduce(chunk_of_lines, %{}, fn line, map ->
+        case parse_line(line) do
+          {:ok, id, email} ->
+            Map.put(map, id, String.downcase(email))
+          {:error, _} ->
+            # IO.puts(reason)
+            map
+        end
+      end)
+    StaffCacheRegister.get_next_cache(reg_pid)
+    |> StaffCache.update_all_staff_map(map)
+  end
+
   @doc """
     Processes data of staff in region, matches each staff member to an email using a cache,
     and writes the matched data to a CSV file.
@@ -78,23 +95,6 @@ defmodule LixLookup do
         [last_line | lines] -> {lines, last_line}
       end
     end)
-  end
-
-  defp build_and_cache_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
-    # Process each line in the chunk
-    # merge the results into a single map & cache map in agent
-    map =
-      Enum.reduce(chunk_of_lines, %{}, fn line, map ->
-        case parse_line(line) do
-          {:ok, id, email} ->
-            Map.put(map, id, String.downcase(email))
-          {:error, _} ->
-            # IO.puts(reason)
-            map
-        end
-      end)
-    StaffCacheRegister.get_next_cache(reg_pid)
-    |> StaffCache.update_all_staff_map(map)
   end
 
   defp parse_line(line) do
