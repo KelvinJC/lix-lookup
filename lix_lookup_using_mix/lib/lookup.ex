@@ -58,8 +58,7 @@ defmodule LixLookup do
 
     ## Parameters
     - `region_staff`: The input data CSV file path containing region staff.
-    - `path`: The file path where the CSV output will be written.
-    - `staff_cache_pid`: The PID of the cache process used to look up staff emails.
+    - `reg_pid`: The PID of the cache process used to look up staff emails.
   """
   def match_region_staff_emails(region_staff, reg_pid) do
     region_staff
@@ -70,6 +69,16 @@ defmodule LixLookup do
       timeout: 30_000
     )
     |> Stream.run()
+  end
+
+  defp match_staff_to_email(staff_list, reg_pid) do
+    caches = StaffCacheRegister.get_all_caches(reg_pid)
+
+    staff_list
+    |> Stream.map(&String.trim(&1))
+    |> Stream.map(&String.split(&1, ","))
+    |> Enum.reject(fn row -> row == [] end)
+    |> (fn staff -> Enum.map(caches, &StaffCache.match_staff_id_to_emails(staff, &1)) end).()
   end
 
   def assemble_matched_staff_and_export_to_csv(path, reg_pid) do
@@ -105,16 +114,6 @@ defmodule LixLookup do
       _ ->
         {:error, "Invalid line format: #{inspect(line)}"}
     end
-  end
-
-  defp match_staff_to_email(staff_list, reg_pid) do
-    caches = StaffCacheRegister.get_all_caches(reg_pid)
-
-    staff_list
-    |> Stream.map(&String.trim(&1))
-    |> Stream.map(&String.split(&1, ","))
-    |> Enum.reject(fn row -> row == [] end)
-    |> (fn staff -> Enum.map(caches, &StaffCache.match_staff_id_to_emails(staff, &1)) end).()
   end
 
   defp write_stream_to_csv(stream_data, csv_path, opts) do
