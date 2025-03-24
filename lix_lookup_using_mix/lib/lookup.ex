@@ -23,14 +23,15 @@ defmodule LixLookup do
   def main() do
     {:ok, cache_register_pid} = StaffCacheRegister.start_link(8)
     build_staff_map(@all_staff_list, cache_register_pid)
-    match_region_staff_emails_and_write_to_csv(@region_staff_list, @region_staff_emails, cache_register_pid)
+    match_region_staff_emails(@region_staff_list, cache_register_pid)
+    assemble_matched_staff_and_export_to_csv(@region_staff_emails, cache_register_pid)
   end
 
   defp build_staff_map(all_staff, pid) do
     all_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
-    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: :infinity)
+    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: 30_000)
     |> Stream.run()
   end
 
@@ -43,7 +44,7 @@ defmodule LixLookup do
     - `path`: The file path where the CSV output will be written.
     - `staff_cache_pid`: The PID of the cache process used to look up staff emails.
   """
-  def match_region_staff_emails_and_write_to_csv(region_staff, path, reg_pid) do
+  def match_region_staff_emails(region_staff, reg_pid) do
     region_staff
     |> line_stream_from_chunk_read()
     |> Stream.chunk_every(5000)
@@ -52,10 +53,12 @@ defmodule LixLookup do
       timeout: 30_000
     )
     |> Stream.run()
+  end
 
-    # TODO: need to assemble data from all Agents
-    # StaffCache.get_all_matched_staff(staff_cache_pid)
-    # |> write_stream_to_csv(path, use_headers: true)
+  def assemble_matched_staff_and_export_to_csv(path, reg_pid) do
+    StaffCacheRegister.get_all_caches(reg_pid)
+    |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
+    |> write_stream_to_csv(path, use_headers: true)
   end
 
   @doc """
@@ -63,7 +66,7 @@ defmodule LixLookup do
   and output a new stream of lines from each chunk. \\
   Default value of `chunk_size` is 500 KB.
   """
-  def line_stream_from_chunk_read(path, chunk_size \\ 10_000_000) do
+  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
     File.stream!(path, [], chunk_size)
     |> Stream.transform("", fn chunk, acc ->
       chunk = String.replace(chunk, "\r\n", "\n")
@@ -105,13 +108,13 @@ defmodule LixLookup do
   end
 
   defp match_staff_to_email(staff_list, reg_pid) do
-    cache_pid = StaffCacheRegister.get_next_cache(reg_pid)
+    caches = StaffCacheRegister.get_all_caches(reg_pid)
 
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
     |> Enum.reject(fn row -> row == [] end)
-    |> StaffCache.match_staff_id_to_emails(cache_pid)
+    |> (fn staff -> Enum.map(caches, &StaffCache.match_staff_id_to_emails(staff, &1)) end).()
   end
 
   defp write_stream_to_csv(stream_data, csv_path, opts) do
@@ -184,10 +187,11 @@ defmodule StaffCache do
   end
 
   def get_all_matched_staff(agent) do
-    Agent.get(agent, fn {_all_staff, matched_staff} -> matched_staff end)
+    Agent.get(agent, fn {_all_staff, matched_staff} ->
+      matched_staff end)
   end
 
-  def update_all_staff_map(agent, staff) when is_map(staff) do
+  def update_all_staff_map(agent, staff)  do
     Agent.update(agent, fn {all_staff, matched_staff} ->
       {Map.merge(staff, all_staff), matched_staff}
     end)
