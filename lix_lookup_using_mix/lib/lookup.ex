@@ -57,7 +57,7 @@ defmodule LixLookup do
             map
         end
       end)
-    StaffCacheRegister.get_next_cache(reg_pid)
+    StaffCacheRegister.get_cache(reg_pid)
     |> StaffCache.add_staff(map)
   end
 

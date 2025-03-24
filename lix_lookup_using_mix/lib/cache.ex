@@ -14,16 +14,16 @@ defmodule StaffCacheRegister do
     Agent.get(agent, fn {_, _, caches} -> caches end)
   end
 
-  def get_next_cache(agent) do
-    {next_cache, _, _} = get_and_update(agent)
+  def get_cache(agent) do
+    {next_cache, _, _} = get_next_cache(agent)
     next_cache
   end
 
-  defp get_and_update(agent) do
+  defp get_next_cache(agent) do
     Agent.get_and_update(agent,
-      fn {_current_cache, rest_caches, caches} = old_state ->
+    fn {_current_cache, rest_caches, caches} = old_state ->
       new_state = loop_through_caches(rest_caches, caches)
-      {old_state, new_state}
+      {old_state, new_state} # Agent.get_and_update/3 only returns the first element of tuple result
     end)
   end
 
