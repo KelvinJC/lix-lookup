@@ -1,10 +1,10 @@
 defmodule FileOps do
   @doc """
-  Read file at `path` in chunks of given size (binary mode) \\
+  Read file at `path` in chunks of bytes - each chunk is the given size \\
   and output a new stream of lines from each chunk. \\
   Default value of `chunk_size` is 500 KB.
   """
-  def line_stream_from_chunk_read(path, chunk_size \\ 10_000_000) do
+  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
     File.stream!(path, [], chunk_size)
     |> Stream.transform("", fn chunk, acc ->
       chunk = String.replace(chunk, "\r\n", "\n")
