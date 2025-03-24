@@ -52,14 +52,6 @@ defmodule LixLookup do
     |> StaffCache.update_all_staff_map(map)
   end
 
-  @doc """
-    Processes data of staff in region, matches each staff member to an email using a cache,
-    and writes the matched data to a CSV file.
-
-    ## Parameters
-    - `region_staff`: The input data CSV file path containing region staff.
-    - `reg_pid`: The PID of the cache process used to look up staff emails.
-  """
   def match_region_staff_emails(region_staff, reg_pid) do
     region_staff
     |> line_stream_from_chunk_read()
