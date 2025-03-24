@@ -14,6 +14,13 @@ defmodule LixLookup do
   @region_staff_list @pwd <> "region_staff.csv"
   @region_staff_emails @pwd <> "region_staff_email.csv"
 
+  @max_concurrency System.schedulers()
+  @num_caches @max_concurrency
+  @proc_time_out 30_000
+  @high_read_chunk_size 10_000_000 # 10 MB
+  @read_chunk_size 500_000
+  @lines_per_chunk 5000
+
   def run do
     {time, result} = :timer.tc(fn -> main() end)
     IO.puts("Execution time: #{time / 1_000_000} seconds")
@@ -21,7 +28,7 @@ defmodule LixLookup do
   end
 
   def main() do
-    {:ok, cache_register_pid} = StaffCacheRegister.start_link(8)
+    {:ok, cache_register_pid} = StaffCacheRegister.start_link(@num_caches)
     build_staff_map(@all_staff_list, cache_register_pid)
 
     caches = StaffCacheRegister.get_all_caches(cache_register_pid)
@@ -31,9 +38,9 @@ defmodule LixLookup do
 
   defp build_staff_map(all_staff, pid) do
     all_staff
-    |> FileOps.line_stream_from_chunk_read()
-    |> Stream.chunk_every(5000)
-    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: 30_000)
+    |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
+    |> Stream.chunk_every(@lines_per_chunk)
+    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: @max_concurrency, timeout: @proc_time_out)
     |> Stream.run()
   end
 
@@ -66,11 +73,11 @@ defmodule LixLookup do
 
   def match_region_staff_emails(region_staff, caches) do
     region_staff
-    |> FileOps.line_stream_from_chunk_read()
-    |> Stream.chunk_every(5000)
+    |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
+    |> Stream.chunk_every(@lines_per_chunk)
     |> Task.async_stream(&match_staff_to_email(&1, caches),
-    max_concurrency: 8,
-    timeout: 30_000
+    max_concurrency: @max_concurrency,
+    timeout: @proc_time_out
     )
     |> Stream.run()
   end
