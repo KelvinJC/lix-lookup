@@ -16,6 +16,16 @@ defmodule StaffCacheRegister do
     Agent.get(agent, fn caches -> caches end)
   end
 
+  @doc """
+  Each query for a cache process returns the PID at the given index.
+  """
+  def get_cache_by_index(agent, index) do
+    Agent.get(agent, fn caches ->
+      default_cache = Enum.at(caches, 0)
+      Enum.at(caches, index, default_cache)
+    end)
+  end
+
   def get_cache(agent) do
     {next_cache, _, _} = get_next_cache(agent)
     next_cache
