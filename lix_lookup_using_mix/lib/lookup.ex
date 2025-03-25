@@ -52,7 +52,7 @@ defmodule LixLookup do
     all_staff
     |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
     |> Stream.chunk_every(@lines_per_chunk)
-    |> Task.async_stream(&build_and_cache_map(&1, pid),
+    |> Task.async_stream(&build_and_cache_sorted_map(&1, pid),
       max_concurrency: @max_concurrency,
       timeout: @proc_time_out,
       on_timeout: :kill_task
@@ -79,6 +79,29 @@ defmodule LixLookup do
     |> StaffCache.add_staff(map)
   end
 
+  defp build_and_cache_sorted_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
+    # Process each line in the chunk
+    # sort the id field
+    # merge the results into a single map & cache map in agent
+
+    map =
+      Enum.reduce(chunk_of_lines, %{}, fn line, sorted_map ->
+        case parse_line(line) do
+          {:ok, id, email} ->
+            add_to_sorted_map(id, String.downcase(email), sorted_map)
+          {:error, _} ->
+            # IO.puts(reason)
+            sorted_map
+        end
+      end)
+    |> Enum.to_list()
+    |> Enum.map(fn {key, val} ->
+        {int_key, _} = Integer.parse(key)
+        StaffCacheRegister.get_cache_by_index(reg_pid, int_key)
+        |> StaffCache.add_staff(val)
+    end)
+  end
+
   defp parse_line(line) do
     # Split the line into parts and extract the ID and email
     case String.split(line, ",") do
@@ -88,6 +111,25 @@ defmodule LixLookup do
       _ ->
         {:error, "Invalid line format: #{inspect(line)}"}
     end
+  end
+
+  defp add_to_sorted_map(id, email, sorted_map) do
+    index = String.at(id, 0) # "[8]5859788546"
+
+    # re = Regex.compile!("^[0-9]*$")
+    # is_index_valid_int = Regex.match?(re, index)
+
+    staff_records_map = Map.get(sorted_map, index, %{})
+
+    new_sorted_map =
+      case staff_records_map do
+        %{} ->
+          staff_record = Map.put(staff_records_map, id, email) # %{"85859788546": "noah.smith@regionelectricity.com"}
+          Map.put(sorted_map, index, staff_record) # %{"8": %{"85859788546": "noah.smith@regionelectricity.com"}}
+        _ ->
+          new_staff_records_map = Map.put(staff_records_map, id, email)
+          Map.put(sorted_map, index, new_staff_records_map)
+      end
   end
 
   def match_region_staff_emails(region_staff, caches) do
