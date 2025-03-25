@@ -27,6 +27,7 @@ defmodule LixLookup do
   @read_chunk_size 500_000  # 500 KB
   @proc_time_out 30_000     # 30,000 milliseconds == 30 seconds
 
+
   # -- for use in tests with CSV files in excess of 55 million records
   # @high_read_chunk_size 10_000_000 # 10 MB
   # @read_chunk_size @high_read_chunk_size
@@ -67,11 +68,12 @@ defmodule LixLookup do
 
     map =
       for line <- chunk_of_lines,
-        reduce: %{} do
+          reduce: %{} do
         sorted_map ->
           case parse_line(line) do
             {:ok, id, email} ->
               add_to_sorted_map(id, String.downcase(email), sorted_map)
+
             {:error, _} ->
               sorted_map
           end
@@ -79,8 +81,8 @@ defmodule LixLookup do
 
     for {index, records} <- map,
         {int_index, _} = Integer.parse(index) do
-        StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
-        |> StaffCache.add_staff(records)
+      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
+      |> StaffCache.add_staff(records)
     end
   end
 
@@ -120,9 +122,10 @@ defmodule LixLookup do
     |> Stream.map(&String.split(&1, ","))
     |> Enum.group_by(fn [_, id, _, _] -> String.first(id) end)
     |> Enum.each(fn {key, val} ->
-        {int_key, _} = Integer.parse(key)
-        StaffCacheRegister.get_cache_by_index(pid, int_key)
-        |> StaffCache.match_staff(val)
+      {int_key, _} = Integer.parse(key)
+
+      StaffCacheRegister.get_cache_by_index(pid, int_key)
+      |> StaffCache.match_staff(val)
     end)
   end
 
