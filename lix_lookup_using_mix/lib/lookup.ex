@@ -65,19 +65,23 @@ defmodule LixLookup do
     # sort the id field
     # merge the results into a single map & cache map in agent
 
-    Enum.reduce(chunk_of_lines, %{}, fn line, sorted_map ->
-      case parse_line(line) do
-        {:ok, id, email} ->
-          add_to_sorted_map(id, String.downcase(email), sorted_map)
-        {:error, _} ->
-          sorted_map
+    map =
+      for line <- chunk_of_lines,
+        reduce: %{} do
+        sorted_map ->
+          case parse_line(line) do
+            {:ok, id, email} ->
+              add_to_sorted_map(id, String.downcase(email), sorted_map)
+            {:error, _} ->
+              sorted_map
+          end
       end
-    end)
-    |> Enum.each(fn {key, val} ->
-        {int_key, _} = Integer.parse(key)
-        StaffCacheRegister.get_cache_by_index(reg_pid, int_key)
-        |> StaffCache.add_staff(val)
-    end)
+
+    for {index, records} <- map,
+        {int_index, _} = Integer.parse(index) do
+        StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
+        |> StaffCache.add_staff(records)
+    end
   end
 
   defp parse_line(line) do
