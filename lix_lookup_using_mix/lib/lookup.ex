@@ -21,8 +21,8 @@ defmodule LixLookup do
   @all_staff_list @pwd <> "all_staff.csv"
   @region_staff_list @pwd <> "region_staff.csv"
   @region_staff_emails @pwd <> "region_staff_email.csv"
-  @max_concurrency System.schedulers()
-  @num_caches @max_concurrency
+  @max_concurrency System.schedulers_online()
+  @num_caches 10
   @lines_per_chunk 5000
   @read_chunk_size 500_000  # 500 KB
   @proc_time_out 30_000     # 30,000 milliseconds == 30 seconds
@@ -44,7 +44,7 @@ defmodule LixLookup do
     build_staff_map(@all_staff_list, cache_register_pid)
 
     caches = StaffCacheRegister.list_caches(cache_register_pid)
-    match_region_staff_emails(@region_staff_list, caches)
+    match_region_staff_emails(@region_staff_list, cache_register_pid)
     assemble_matched_staff_and_export_to_csv(@region_staff_emails, caches)
   end
 
@@ -60,42 +60,20 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp build_and_cache_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
-    # Process each line in the chunk
-    # merge the results into a single map & cache map in agent
-    map =
-      Enum.reduce(chunk_of_lines, %{}, fn line, map ->
-        case parse_line(line) do
-          {:ok, id, email} ->
-            Map.put(map, id, String.downcase(email))
-
-          {:error, _} ->
-            # IO.puts(reason)
-            map
-        end
-      end)
-
-    StaffCacheRegister.get_cache(reg_pid)
-    |> StaffCache.add_staff(map)
-  end
-
   defp build_and_cache_sorted_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
     # Process each line in the chunk
     # sort the id field
     # merge the results into a single map & cache map in agent
 
-    map =
-      Enum.reduce(chunk_of_lines, %{}, fn line, sorted_map ->
-        case parse_line(line) do
-          {:ok, id, email} ->
-            add_to_sorted_map(id, String.downcase(email), sorted_map)
-          {:error, _} ->
-            # IO.puts(reason)
-            sorted_map
-        end
-      end)
-    |> Enum.to_list()
-    |> Enum.map(fn {key, val} ->
+    Enum.reduce(chunk_of_lines, %{}, fn line, sorted_map ->
+      case parse_line(line) do
+        {:ok, id, email} ->
+          add_to_sorted_map(id, String.downcase(email), sorted_map)
+        {:error, _} ->
+          sorted_map
+      end
+    end)
+    |> Enum.each(fn {key, val} ->
         {int_key, _} = Integer.parse(key)
         StaffCacheRegister.get_cache_by_index(reg_pid, int_key)
         |> StaffCache.add_staff(val)
@@ -114,29 +92,17 @@ defmodule LixLookup do
   end
 
   defp add_to_sorted_map(id, email, sorted_map) do
-    index = String.at(id, 0) # "[8]5859788546"
-
-    # re = Regex.compile!("^[0-9]*$")
-    # is_index_valid_int = Regex.match?(re, index)
-
-    staff_records_map = Map.get(sorted_map, index, %{})
-
-    new_sorted_map =
-      case staff_records_map do
-        %{} ->
-          staff_record = Map.put(staff_records_map, id, email) # %{"85859788546": "noah.smith@regionelectricity.com"}
-          Map.put(sorted_map, index, staff_record) # %{"8": %{"85859788546": "noah.smith@regionelectricity.com"}}
-        _ ->
-          new_staff_records_map = Map.put(staff_records_map, id, email)
-          Map.put(sorted_map, index, new_staff_records_map)
-      end
+    index = String.first(id)
+    staff_records = Map.get(sorted_map, index, %{})
+    new_staff_records = Map.put_new(staff_records, id, email)
+    Map.put(sorted_map, index, new_staff_records)
   end
 
-  def match_region_staff_emails(region_staff, caches) do
+  def match_region_staff_emails(region_staff, pid) do
     region_staff
     |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
     |> Stream.chunk_every(@lines_per_chunk)
-    |> Task.async_stream(&match_per_cache(&1, caches),
+    |> Task.async_stream(&match_per_cache(&1, pid),
       max_concurrency: @max_concurrency,
       timeout: @proc_time_out,
       on_timeout: :kill_task
@@ -144,17 +110,21 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp match_per_cache(staff_list, caches) do
+  defp match_per_cache(staff_list, pid) do
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
-    |> Enum.reject(fn row -> row == [] end)
-    |> (fn staff -> Enum.map(caches, &StaffCache.match_staff(&1, staff)) end).()
+    |> Enum.group_by(fn [_, id, _, _] -> String.first(id) end)
+    |> Enum.each(fn {key, val} ->
+        {int_key, _} = Integer.parse(key)
+        StaffCacheRegister.get_cache_by_index(pid, int_key)
+        |> StaffCache.match_staff(val)
+    end)
   end
 
   def assemble_matched_staff_and_export_to_csv(path, caches) do
     caches
     |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
-    |> FileOps.write_stream_to_csv(path)
+    |> FileOps.write_stream_to_csv(path, headers: ["staff_id, name, email\n"])
   end
 end
