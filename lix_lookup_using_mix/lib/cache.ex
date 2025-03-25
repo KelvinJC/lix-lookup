@@ -26,6 +26,9 @@ defmodule StaffCacheRegister do
     end)
   end
 
+  @doc """
+  Each query for a cache process returns a new PID by cycling through the list of processes.
+  """
   def get_cache(agent) do
     {next_cache, _, _} = get_next_cache(agent)
     next_cache
