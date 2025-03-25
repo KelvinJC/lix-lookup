@@ -5,15 +5,14 @@ defmodule StaffCacheRegister do
   """
   def start_link(num_caches) do
     Agent.start(fn ->
-      caches = create_caches(num_caches)
+      caches =
+        for _ <- 1..num_caches do
+          {:ok, cache_pid} = StaffCache.start_link()
+          cache_pid
+        end
       [next_cache | rest_caches] = caches
       {next_cache, rest_caches, caches}
     end)
-  end
-
-  defp create_caches(num) do
-    Enum.map(1..num, fn _ -> StaffCache.start_link() end)
-    |> Enum.map(fn {:ok, cache_pid} -> cache_pid end)
   end
 
   def list_caches(agent) do
