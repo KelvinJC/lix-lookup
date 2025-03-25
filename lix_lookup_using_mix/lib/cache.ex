@@ -4,7 +4,9 @@ defmodule StaffCacheRegister do
   The PID for each process is stored in a list within its internal state.
   """
   def start_link(num_caches) do
-    Agent.start(fn -> create_caches(num_caches) end)
+    caches = create_caches(num_caches)
+    [next_cache | rest_caches] = caches
+    Agent.start(fn -> {next_cache, rest_caches, caches} end)
   end
 
   defp create_caches(num) do
@@ -13,7 +15,7 @@ defmodule StaffCacheRegister do
   end
 
   def list_caches(agent) do
-    Agent.get(agent, fn caches -> caches end)
+    Agent.get(agent, fn {_, _, caches} -> caches end)
   end
 
   @doc """
