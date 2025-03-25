@@ -1,8 +1,7 @@
 defmodule StaffCacheRegister do
   @moduledoc """
   `StaffCacheRegister` is responsible for generating and tracking multiple `StaffCache` agent processes. \\
-  The PID for each process is stored in a list within its internal state. Each query for a process
-  (made by calling `get_cache/1`) returns a new PID by cycling through the list of processes.
+  The PID for each process is stored in a list within its internal state.
   """
   def start_link(num_caches) do
     caches = create_caches(num_caches)
