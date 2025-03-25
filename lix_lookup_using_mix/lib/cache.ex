@@ -10,6 +10,7 @@ defmodule StaffCacheRegister do
           {:ok, cache_pid} = StaffCache.start_link()
           cache_pid
         end
+
       [next_cache | rest_caches] = caches
       {next_cache, rest_caches, caches}
     end)
@@ -61,7 +62,6 @@ defmodule StaffCacheRegister do
     {next_cache, rest_caches, original_caches}
   end
 end
-
 
 defmodule StaffCache do
   def start_link() do
