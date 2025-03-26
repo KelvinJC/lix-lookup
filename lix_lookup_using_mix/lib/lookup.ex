@@ -116,16 +116,16 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp match_per_cache(staff_list, pid) do
+  defp match_per_cache(staff_list, reg_pid) do
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
     |> Enum.group_by(fn [_, id, _, _] -> String.first(id) end)
-    |> Enum.each(fn {key, val} ->
-      {int_key, _} = Integer.parse(key)
+    |> Enum.each(fn {index, records} ->
+      {int_index, _} = Integer.parse(index)
 
-      StaffCacheRegister.get_cache_by_index(pid, int_key)
-      |> StaffCache.match_staff(val)
+      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
+      |> StaffCache.match_staff(records)
     end)
   end
 
