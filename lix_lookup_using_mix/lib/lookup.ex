@@ -1,18 +1,25 @@
-# Quick recap of implementation. Find full version in README.md file.
-# 1. The main process reads data from a file.
-# 2. It spawns multiple asynchronous processes, each responsible for:
+# **Quick Recap of Implementation**
+#
+# 1. The main process streams data from a file in chunks.
+# 2. It spawns multiple asynchronous worker processes to handle chunks of data each responsible for:
 #    - Receiving a chunk of streamed staff data.
-#    - Building a map from the received lines.
-#    - Transmitting the map back to the main process.
-# 3. The main process merges the received maps and caches the final result in an Agent.
-# 4. It spawns another batch of async processes to read lines from a second file.
-# 5. Each new process performs a lookup against the cached data by querying the Agent.
+#    - Constructing a key-value map from the parsed lines.
+#    - Sending the map to an **Agent process** for caching.
+# 3. The **Agent process** merges all received key-value maps.
+#    - It maintains the final dataset in its internal state for fast lookups.
+# 4. The main process streams data from a second file and spawns another set of async processes.
+#    - Each process handles a chunk of lines and queries the `Agent` to match staff with their emails.
+# 5. The `Agent` matches staff to their email records by performing lookups of each line against
+#    the key value map in its internal state.
+#    - the `Agent` maintains a list of matched staff records.
+# 6. The main process retrieves the matched data and exports it to a CSV file.
+
 
 defmodule LixLookup do
   @pwd "./"
-  @all_staff_list  @pwd<>"all_staff.csv"
-  @region_staff_list  @pwd<>"region_staff.csv"
-  @region_staff_emails  @pwd<>"region_staff_email.csv"
+  @all_staff_list @pwd <> "all_staff.csv"
+  @region_staff_list @pwd <> "region_staff.csv"
+  @region_staff_emails @pwd <> "region_staff_email.csv"
 
   def run do
     {time, result} = :timer.tc(fn -> main() end)
@@ -21,35 +28,40 @@ defmodule LixLookup do
   end
 
   def main() do
-    {:ok, staff_cache_pid} = build_staff_map(@all_staff_list)
-    write_region_staff_data(@region_staff_list, staff_cache_pid, @region_staff_emails)
+    {:ok, staff_cache_pid} = Staff.start_link()
+    build_staff_map(@all_staff_list, staff_cache_pid)
+    match_region_staff_emails_and_write_to_csv(@region_staff_list, @region_staff_emails, staff_cache_pid)
   end
 
-  defp build_staff_map(all_staff) do
+  defp build_staff_map(all_staff, pid) do
     all_staff
     |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(2500)
-    |> Task.async_stream(&build_map_from_line_stream/1, max_concurrency: 5, timeout: :infinity)
-    |> Enum.reduce(%{}, fn ({:ok, stream_result}, acc) -> Map.merge(acc, stream_result) end)
-    |> Staff.start_link()
+    |> Stream.chunk_every(5000)
+    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: 30_000)
+    |> Stream.run()
   end
 
-  defp write_region_staff_data(region_staff, staff_cache_pid, path) do
+  @doc """
+    Processes data of staff in region, matches each staff member to an email using a cache,
+    and writes the matched data to a CSV file.
+
+    ## Parameters
+    - `region_staff`: The input data CSV file path containing region staff.
+    - `path`: The file path where the CSV output will be written.
+    - `staff_cache_pid`: The PID of the cache process used to look up staff emails.
+  """
+  def match_region_staff_emails_and_write_to_csv(region_staff, path, staff_cache_pid) do
     region_staff
     |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(500)
-    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid), max_concurrency: 300, timeout: :infinity)
-    |> Enum.reduce([], fn ({:ok, stream_result}, acc) -> acc ++ merge_stream_result_enum(stream_result) end)
-    |> write_stream_to_csv(path, use_headers: true)
-  end
+    |> Stream.chunk_every(5000)
+    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid),
+      max_concurrency: 8,
+      timeout: 30_000
+    )
+    |> Stream.run()
 
-  def merge_stream_result_enum(stream_result_enum) do
-    Enum.reduce(stream_result_enum, [], fn {tag, row}, lines ->
-      case tag do
-        :ok -> lines ++ [row]
-        :error -> lines
-      end
-    end)
+    Staff.get_all_matched_staff(staff_cache_pid)
+    |> write_stream_to_csv(path, use_headers: true)
   end
 
   @doc """
@@ -57,11 +69,11 @@ defmodule LixLookup do
   and output a new stream of lines from each chunk. \\
   Default value of `chunk_size` is 500 KB.
   """
-  def line_stream_from_chunk_read(path, chunk_size \\ 500_000) do
+  def line_stream_from_chunk_read(path, chunk_size \\ 10_000_000) do
     File.stream!(path, [], chunk_size)
     |> Stream.transform("", fn chunk, acc ->
       chunk = String.replace(chunk, "\r\n", "\n")
-      new_chunk = acc <> chunk |> String.split("\n", trim: true)
+      new_chunk = (acc <> chunk) |> String.split("\n", trim: true)
 
       case new_chunk do
         [] -> {[], ""}
@@ -71,38 +83,37 @@ defmodule LixLookup do
     end)
   end
 
-  defp build_map_from_line_stream(line_stream) do
-    build =
-      try do
-        map =
-          line_stream
-          |> format_strings()
-          |> Enum.reduce(%{}, fn (row, map) ->
-            [_, _, _, _, _, id, _, email | _] = row
-            Map.put(map, id, String.downcase(email))
-          end)
-        {:ok, map}
-      rescue
-        e -> {:error, Exception.message(e)}
+  defp build_and_cache_map(chunk_of_lines, cache_pid) when is_list(chunk_of_lines) do
+    # Process each line in the chunk
+    # merge the results into a single map & cache map in agent
+    Enum.reduce(chunk_of_lines, %{}, fn line, map ->
+      case parse_line(line) do
+        {:ok, id, email} ->
+          Map.put(map, id, String.downcase(email))
+        {:error, _} ->
+          # IO.puts(reason)
+          map
       end
-
-    case build do
-      {:ok, map} -> map
-      {:error, _} -> %{}
-    end
+    end)
+    |> Staff.update_all_staff_map(cache_pid)
   end
 
-  defp format_strings(strings) do
-    strings
-    |> Stream.map(&String.trim(&1))
-    |> Stream.map(&String.split(&1, ","))
+  defp parse_line(line) do
+    # Split the line into parts and extract the ID and email
+    case String.split(line, ",") do
+      [_, _, _, _, _, id, _, email | _] ->
+        {:ok, id, email}
+      _ ->
+        {:error, "Invalid line format: #{inspect(line)}"}
+    end
   end
 
   defp match_staff_to_email(staff_list, cache_pid) do
     staff_list
-    |> format_strings()
-    |> Enum.reject(fn (row) -> row == [] end )
-    |> Staff.lookup_staff_emails(cache_pid)
+    |> Stream.map(&String.trim(&1))
+    |> Stream.map(&String.split(&1, ","))
+    |> Enum.reject(fn row -> row == [] end)
+    |> Staff.match_staff_id_to_emails(cache_pid)
   end
 
   defp write_stream_to_csv(stream_data, csv_path, opts) do
@@ -119,37 +130,50 @@ defmodule LixLookup do
 end
 
 defmodule Staff do
-  def start_link(map) do
-    Agent.start_link(fn -> map end)
+  def start_link() do
+    Agent.start_link(fn -> {%{}, []} end)
+  end
+
+  def get_state(agent) do
+    Agent.get(agent, fn {all_staff, matched_staff} -> {all_staff, matched_staff} end)
   end
 
   def get_all_staff(agent) do
-    Agent.get(agent, fn(state) -> state end)
+    Agent.get(agent, fn {all_staff, _matched_staff} -> all_staff end)
   end
 
-  def find_staff_email([_, id, name, _], agent) do
-    Agent.get(agent, fn(state) ->
-      email = Map.get(state, id)
-      if email == nil do
-        {:error, {:email_not_found}}
-      else
-        {:ok, {id, name, email}}
-      end
+  def get_all_matched_staff(agent) do
+    Agent.get(agent, fn {_all_staff, matched_staff} -> matched_staff end)
+  end
+
+  def update_all_staff_map(staff, agent) when is_map(staff) do
+    Agent.update(agent, fn {all_staff, matched_staff} ->
+      {Map.merge(staff, all_staff), matched_staff}
     end)
   end
 
-  def lookup_staff_emails(staff, agent) do
+  def match_staff_id_to_emails(staff, agent) do
     lookup = fn staff, all_staff ->
-      Enum.map(staff, fn ([_, id, name, _]) ->
-        email = Map.get(all_staff, id)
-        if email == nil do
-          {:error, "Staff ID does not match any record."}
-        else
-          {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+      staff
+      |> Enum.map(fn [_, id, name, _] ->
+          email = Map.get(all_staff, id)
+          if email == nil do
+            {:error, "Staff ID does not match any record."}
+          else
+            {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+          end
+        end)
+      |> Enum.map(fn {tag, row} ->
+        case tag do
+          :ok -> row
+          :error -> []
         end
       end)
     end
 
-    Agent.get(agent, fn(all_staff) -> lookup.(staff, all_staff) end)
+    Agent.update(agent, fn {all_staff, matched_staff} ->
+      new_matched_staff = lookup.(staff, all_staff)
+      {all_staff, matched_staff ++ new_matched_staff}
+    end)
   end
 end
