@@ -43,5 +43,7 @@ The main process retrieves the matched data from all `StaffCache` processes and 
 
 
 ## Benchmark tests
-Matched 32,000 records (sample in region_staff.csv) against 55 million records (sample in all_staff.csv) in 2.40 seconds  
-Matched 12,000 records against 1 million records in 1.2 seconds 
+- Machine specs: Windows PC 4 cores, 16 GB RAM
+- Results:
+  - Matched 32,000 records (sample in region_staff.csv) against 55 million records (sample in all_staff.csv) in 2.40 seconds  
+  - Matched 12,000 records against 1 million records in 1.2 seconds 
