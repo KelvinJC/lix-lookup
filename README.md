@@ -7,7 +7,7 @@ to find their corresponding emails in the second file.
 It then generates a new CSV file containing the staff ID, name, and email for the subset of staff.
 
 
-## Process Overview
+## Implementation Overview
 
 ### Creating and Tracking Processes
 The main process creates an agent process called `StaffCacheRegister`, which is responsible for generating and tracking multiple agent processes to serve as memory caches.
