@@ -7,36 +7,35 @@ to find their corresponding emails in the second file.
 It then generates a new CSV file containing the staff ID, name, and email for the subset of staff.
 
 
-### **Implementation Overview**
+# Process Overview
 
-This program efficiently processes large CSV files by leveraging concurrency.
-It uses multiple asynchronous processes to map staff data and perform lookups.
+## Creating and Tracking Processes
+The main process creates an agent process called `StaffCacheRegister`, which is responsible for generating and tracking multiple agent processes to serve as memory caches.
 
-Step-by-Step Execution:
- - Streaming & Parallel Processing:
-  - The main process streams data from a file in chunks.  
-  - It spawns multiple asynchronous worker processes to handle each chunk.  
-  - Each worker:  
-    - Parses each line in the chunk into a key-value map.  
-     - Sends the map to an **Agent process** for caching.  
+## Streaming & Parallel Processing
+The main process streams rows of data from a file and spawns multiple asynchronous processes. Each process is responsible for:
+- Receiving and parsing rows of staff data.
+- Constructing a key-value map from the parsed rows.
+- Querying the `StaffCacheRegister` for the PID of a `StaffCache` process.
+- Sending the map to the `StaffCache` process for caching.
 
- - Caching & Data Merging: 
-  - The **Agent process** collects and merges all key-value maps.  
-   - It maintains the complete dataset in memory for fast lookups.  
+The main process then streams lines of data from a second file and spawns another batch of asynchronous processes. Each of these processes is responsible for:
+- Receiving rows of streamed staff data.
+- Querying each `StaffCache` agent process to match staff with their emails.
 
- - Performing Lookups Efficiently:
-  - The main process streams data from a second file.  
-  - Another set of worker processes handles these new chunks.  
-   - Each worker queries the **Agent** to find matching staff emails.  
+## Caching & Data Merging
+Each `StaffCache` process receives and stores parsed staff data in its internal state. As new data is streamed, these processes update their internal key-value maps with the new information, ensuring efficient data merging and retrieval.
 
- - Storing & Exporting Results:
-  - The **Agent** maintains a list of matched staff records.  
-   - The main process retrieves this data and exports it to a CSV file.  
+## Performing Lookups Efficiently
+Each `StaffCache` process matches staff to their email records by performing lookups of each line against the key-value map stored in its internal state. The process maintains a list of matched staff records for efficient retrieval.
+
+## Storing & Exporting Results
+The main process retrieves the matched data from all `StaffCache` processes and consolidates the results. The final dataset is then exported to a CSV file for further analysis or external use.
+
 
 
 ### Key Benefits: 
 **Memory Efficient** – Streams data in chunks instead of loading everything into memory.  
 **Highly Concurrent** – Uses async processes to speed up mapping and lookups.  
-**Fast Lookups** – Cached data in an Agent ensures quick retrieval.  
+**Fast Lookups** – Cached data in Agents ensures quick retrieval.  
 **Scalable** – Can handle large datasets without blocking execution.  
-
