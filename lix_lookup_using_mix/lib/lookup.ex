@@ -1,25 +1,38 @@
-# **Quick Recap of Implementation**
-#
-# 1. The main process streams data from a file in chunks.
-# 2. It spawns multiple asynchronous worker processes to handle chunks of data each responsible for:
-#    - Receiving a chunk of streamed staff data.
-#    - Constructing a key-value map from the parsed lines.
-#    - Sending the map to an **Agent process** for caching.
-# 3. The **Agent process** merges all received key-value maps.
-#    - It maintains the final dataset in its internal state for fast lookups.
-# 4. The main process streams data from a second file and spawns another set of async processes.
-#    - Each process handles a chunk of lines and queries the `Agent` to match staff with their emails.
-# 5. The `Agent` matches staff to their email records by performing lookups of each line against
+# Quick recap of implementation.
+# 1. The main process creates an agent process `StaffCacheRegister` responsible for
+#    generating and tracking multiple agent processes to serve as memory caches.
+# 2. The main process streams rows of data from a file.
+# 3. It spawns multiple asynchronous processes, each responsible for:
+#    - Receiving and parsing rows of staff data.
+#    - Constructing a key-value map from the parsed rows.
+#    - Querying the `StaffCacheRegister` for the PID of a `StaffCache` process
+#    - Sending the map to the `StaffCache` process for caching.
+# 4. The main process streams lines of data from a second file.
+# 5. It spawns another batch of async processes, each responsible for:
+#    - Receiving rows of streamed staff data.
+#    - Querying each `StaffCache` agent process to match staff with their emails.
+# 6. Each `StaffCache` process matches staff to their email records by performing lookups of each line against
 #    the key value map in its internal state.
-#    - the `Agent` maintains a list of matched staff records.
-# 6. The main process retrieves the matched data and exports it to a CSV file.
-
+#    - It maintains a list of matched staff records.
+# 7. The main process retrieves the matched data from all caches and exports it to a CSV file.
 
 defmodule LixLookup do
   @pwd "./"
   @all_staff_list @pwd <> "all_staff.csv"
   @region_staff_list @pwd <> "region_staff.csv"
   @region_staff_emails @pwd <> "region_staff_email.csv"
+  @max_concurrency System.schedulers_online()
+  @num_caches 10
+  @lines_per_chunk 5000
+  @read_chunk_size 500_000  # 500 KB
+  @proc_time_out 30_000     # 30,000 milliseconds == 30 seconds
+
+
+  # -- for use in tests with CSV files in excess of 55 million records
+  # @high_read_chunk_size 10_000_000 # 10 MB
+  # @read_chunk_size @high_read_chunk_size
+  # @high_proc_time_out :infinity
+  # @proc_time_out @high_proc_time_out
 
   def run do
     {time, result} = :timer.tc(fn -> main() end)
@@ -27,75 +40,55 @@ defmodule LixLookup do
     result
   end
 
-  def main() do
-    {:ok, staff_cache_pid} = Staff.start_link()
-    build_staff_map(@all_staff_list, staff_cache_pid)
-    match_region_staff_emails_and_write_to_csv(@region_staff_list, @region_staff_emails, staff_cache_pid)
+  def main(
+        staff_list \\ @all_staff_list,
+        region_staff \\ @region_staff_list,
+        region_staff_emails \\ @region_staff_emails
+      ) do
+
+    {:ok, cache_register_pid} = StaffCacheRegister.start_link(@num_caches)
+    build_staff_map(staff_list, cache_register_pid)
+
+    caches = StaffCacheRegister.list_caches(cache_register_pid)
+    match_region_staff_emails(region_staff, cache_register_pid)
+    assemble_matched_staff_and_export_to_csv(region_staff_emails, caches)
   end
 
   defp build_staff_map(all_staff, pid) do
     all_staff
-    |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(5000)
-    |> Task.async_stream(&build_and_cache_map(&1, pid), max_concurrency: 8, timeout: 30_000)
-    |> Stream.run()
-  end
-
-  @doc """
-    Processes data of staff in region, matches each staff member to an email using a cache,
-    and writes the matched data to a CSV file.
-
-    ## Parameters
-    - `region_staff`: The input data CSV file path containing region staff.
-    - `path`: The file path where the CSV output will be written.
-    - `staff_cache_pid`: The PID of the cache process used to look up staff emails.
-  """
-  def match_region_staff_emails_and_write_to_csv(region_staff, path, staff_cache_pid) do
-    region_staff
-    |> line_stream_from_chunk_read()
-    |> Stream.chunk_every(5000)
-    |> Task.async_stream(&match_staff_to_email(&1, staff_cache_pid),
-      max_concurrency: 8,
-      timeout: 30_000
+    |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
+    |> Stream.chunk_every(@lines_per_chunk)
+    |> Task.async_stream(&build_and_cache_sorted_map(&1, pid),
+      max_concurrency: @max_concurrency,
+      timeout: @proc_time_out,
+      on_timeout: :kill_task
     )
     |> Stream.run()
-
-    Staff.get_all_matched_staff(staff_cache_pid)
-    |> write_stream_to_csv(path, use_headers: true)
   end
 
-  @doc """
-  Read file at `path` in chunks of given size (binary mode) \\
-  and output a new stream of lines from each chunk. \\
-  Default value of `chunk_size` is 500 KB.
-  """
-  def line_stream_from_chunk_read(path, chunk_size \\ 10_000_000) do
-    File.stream!(path, [], chunk_size)
-    |> Stream.transform("", fn chunk, acc ->
-      chunk = String.replace(chunk, "\r\n", "\n")
-      new_chunk = (acc <> chunk) |> String.split("\n", trim: true)
-
-      case new_chunk do
-        [] -> {[], ""}
-        [last_line] -> {[], last_line}
-        [last_line | lines] -> {lines, last_line}
-      end
-    end)
-  end
-
-  defp build_and_cache_map(chunk_of_lines, cache_pid) when is_list(chunk_of_lines) do
+  defp build_and_cache_sorted_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
     # Process each line in the chunk
+    # sort the id field
     # merge the results into a single map & cache map in agent
-    Enum.reduce(chunk_of_lines, %{}, fn line, map ->
-      case parse_line(line) do
-        {:ok, id, email} ->
-          Map.put(map, id, String.downcase(email))
-        {:error, _} ->
-          # IO.puts(reason)
-          map
+
+    map =
+      for line <- chunk_of_lines,
+          reduce: %{} do
+        sorted_map ->
+          case parse_line(line) do
+            {:ok, id, email} ->
+              add_to_sorted_map(id, String.downcase(email), sorted_map)
+
+            {:error, _} ->
+              sorted_map
+          end
       end
-    end)
-    |> Staff.update_all_staff_map(cache_pid)
+
+    for {index, records} <- map,
+        {int_index, _} = Integer.parse(index) do
+      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
+      |> StaffCache.add_staff(records)
+    end
   end
 
   defp parse_line(line) do
@@ -103,77 +96,47 @@ defmodule LixLookup do
     case String.split(line, ",") do
       [_, _, _, _, _, id, _, email | _] ->
         {:ok, id, email}
+
       _ ->
         {:error, "Invalid line format: #{inspect(line)}"}
     end
   end
 
-  defp match_staff_to_email(staff_list, cache_pid) do
+  defp add_to_sorted_map(id, email, sorted_map) do
+    index = String.first(id)
+    staff_records = Map.get(sorted_map, index, %{})
+    new_staff_records = Map.put_new(staff_records, id, email)
+    Map.put(sorted_map, index, new_staff_records)
+  end
+
+  def match_region_staff_emails(region_staff, pid) do
+    region_staff
+    |> FileOps.line_stream_from_chunk_read(@read_chunk_size)
+    |> Stream.chunk_every(@lines_per_chunk)
+    |> Task.async_stream(&match_per_cache(&1, pid),
+      max_concurrency: @max_concurrency,
+      timeout: @proc_time_out,
+      on_timeout: :kill_task
+    )
+    |> Stream.run()
+  end
+
+  defp match_per_cache(staff_list, reg_pid) do
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
-    |> Enum.reject(fn row -> row == [] end)
-    |> Staff.match_staff_id_to_emails(cache_pid)
-  end
+    |> Enum.group_by(fn [_, id, _, _] -> String.first(id) end)
+    |> Enum.each(fn {index, records} ->
+      {int_index, _} = Integer.parse(index)
 
-  defp write_stream_to_csv(stream_data, csv_path, opts) do
-    headers = ["staff_id, name, email\n"]
-    use_headers = Keyword.get(opts, :use_headers, false)
-
-    if use_headers == true do
-      Stream.concat(headers, stream_data)
-    else
-      stream_data
-    end
-    |> Enum.into(File.stream!(csv_path))
-  end
-end
-
-defmodule Staff do
-  def start_link() do
-    Agent.start_link(fn -> {%{}, []} end)
-  end
-
-  def get_state(agent) do
-    Agent.get(agent, fn {all_staff, matched_staff} -> {all_staff, matched_staff} end)
-  end
-
-  def get_all_staff(agent) do
-    Agent.get(agent, fn {all_staff, _matched_staff} -> all_staff end)
-  end
-
-  def get_all_matched_staff(agent) do
-    Agent.get(agent, fn {_all_staff, matched_staff} -> matched_staff end)
-  end
-
-  def update_all_staff_map(staff, agent) when is_map(staff) do
-    Agent.update(agent, fn {all_staff, matched_staff} ->
-      {Map.merge(staff, all_staff), matched_staff}
+      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
+      |> StaffCache.match_staff(records)
     end)
   end
 
-  def match_staff_id_to_emails(staff, agent) do
-    lookup = fn staff, all_staff ->
-      staff
-      |> Enum.map(fn [_, id, name, _] ->
-          email = Map.get(all_staff, id)
-          if email == nil do
-            {:error, "Staff ID does not match any record."}
-          else
-            {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
-          end
-        end)
-      |> Enum.map(fn {tag, row} ->
-        case tag do
-          :ok -> row
-          :error -> []
-        end
-      end)
-    end
-
-    Agent.update(agent, fn {all_staff, matched_staff} ->
-      new_matched_staff = lookup.(staff, all_staff)
-      {all_staff, matched_staff ++ new_matched_staff}
-    end)
+  def assemble_matched_staff_and_export_to_csv(path, caches) do
+    caches
+    |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
+    |> FileOps.write_stream_to_csv(path, headers: ["staff_id, name, email\n"])
   end
 end
