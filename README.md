@@ -39,3 +39,11 @@ The main process retrieves the matched data from all `StaffCache` processes and 
 **Highly Concurrent** – Uses async processes to speed up mapping and lookups.  
 **Fast Lookups** – Cached data in Agents ensures quick retrieval.  
 **Scalable** – Can handle large datasets without blocking execution.  
+
+
+
+## Benchmark tests
+- Machine specs: Windows PC 4 cores, 16 GB RAM
+- Results:
+  - Matched 32,000 records (sample in region_staff.csv) against 55 million records (sample in all_staff.csv) in 2.40 seconds  
+  - Matched 12,000 records against 1 million records in 1.2 seconds 
