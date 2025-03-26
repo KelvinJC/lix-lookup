@@ -40,13 +40,18 @@ defmodule LixLookup do
     result
   end
 
-  def main() do
+  def main(
+        staff_list \\ @all_staff_list,
+        region_staff \\ @region_staff_list,
+        region_staff_emails \\ @region_staff_emails
+      ) do
+
     {:ok, cache_register_pid} = StaffCacheRegister.start_link(@num_caches)
-    build_staff_map(@all_staff_list, cache_register_pid)
+    build_staff_map(staff_list, cache_register_pid)
 
     caches = StaffCacheRegister.list_caches(cache_register_pid)
-    match_region_staff_emails(@region_staff_list, cache_register_pid)
-    assemble_matched_staff_and_export_to_csv(@region_staff_emails, caches)
+    match_region_staff_emails(region_staff, cache_register_pid)
+    assemble_matched_staff_and_export_to_csv(region_staff_emails, caches)
   end
 
   defp build_staff_map(all_staff, pid) do
