@@ -1,6 +1,6 @@
 # Quick recap of implementation.
 # 1. The main process creates an agent process `StaffCacheRegister` responsible for
-#    generating and tracking multiple agent processes to serve as memory caches.
+#    generating and tracking multiple agent processes to serve as in-memory caches.
 # 2. The main process streams rows of data from a file.
 # 3. It spawns multiple asynchronous processes, each responsible for:
 #    - Receiving and parsing rows of staff data.
