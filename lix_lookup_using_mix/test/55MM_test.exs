@@ -17,7 +17,7 @@ defmodule LixLookup55MMRecordsTest do
   end
 
   test "55 million records", %{main_args: main_args} do
-    str = LixLookup.main(main_args)
+    str = LixLookup.run(main_args)
     assert is_struct(str)
     assert str.path == "./region_staff_email_55MM.csv"
   end
