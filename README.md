@@ -10,7 +10,7 @@ It then generates a new CSV file containing the staff ID, name, and email for th
 ## Implementation Overview
 
 #### Creating and Tracking Processes
-The main process creates an agent process called `StaffCacheRegister`, which is responsible for generating and tracking multiple agent processes to serve as memory caches.
+The main process creates an agent process called `StaffCacheRegister`, which is responsible for generating and tracking multiple agent processes that serve as memory caches.
 
 #### Streaming & Parallel Processing
 The main process streams rows of data from a file and spawns multiple asynchronous processes. Each process is responsible for:
