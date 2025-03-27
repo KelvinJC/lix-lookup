@@ -1,19 +1,38 @@
 defmodule StaffCacheRegister do
+  @moduledoc """
+  `StaffCacheRegister` is responsible for generating and tracking multiple `StaffCache` agent processes. \\
+  The PID for each process is stored in a list within its internal state.
+  """
   def start_link(num_caches) do
-    caches = create_caches(num_caches)
-    [next_cache | rest_caches] = caches
-    Agent.start(fn -> {next_cache, rest_caches, caches} end)
-  end
+    Agent.start(fn ->
+      caches =
+        for _ <- 1..num_caches do
+          {:ok, cache_pid} = StaffCache.start_link()
+          cache_pid
+        end
 
-  defp create_caches(num) do
-    Enum.map(1..num, fn _ -> StaffCache.start_link() end)
-    |> Enum.map(fn {:ok, cache_pid} -> cache_pid end)
+      [next_cache | rest_caches] = caches
+      {next_cache, rest_caches, caches}
+    end)
   end
 
   def list_caches(agent) do
     Agent.get(agent, fn {_, _, caches} -> caches end)
   end
 
+  @doc """
+  Each query for a cache process returns the PID at the given index.
+  """
+  def get_cache_by_index(agent, index) do
+    Agent.get(agent, fn {_, _, caches} ->
+      default_cache = Enum.at(caches, 0)
+      Enum.at(caches, index, default_cache)
+    end)
+  end
+
+  @doc """
+  Each query for a cache process returns a new PID by cycling through the list of processes.
+  """
   def get_cache(agent) do
     {next_cache, _, _} = get_next_cache(agent)
     next_cache
