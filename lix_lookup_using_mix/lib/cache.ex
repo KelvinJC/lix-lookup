@@ -1,4 +1,6 @@
 defmodule StaffCacheRegister do
+  use Agent
+
   @moduledoc """
   `StaffCacheRegister` is responsible for generating and tracking multiple `StaffCache` agent processes. \\
   The PID for each process is stored in a list within its internal state.
@@ -64,6 +66,8 @@ defmodule StaffCacheRegister do
 end
 
 defmodule StaffCache do
+  use Agent
+
   def start_link() do
     Agent.start_link(fn -> {%{}, []} end)
   end
