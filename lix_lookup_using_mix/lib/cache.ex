@@ -43,6 +43,7 @@ defmodule StaffCacheRegister do
         {:ok, pid} = StaffCache.start_link()
         pid
       end
+
     {:noreply, pids_of_caches}
   end
 
@@ -51,12 +52,14 @@ defmodule StaffCacheRegister do
     case caches do
       [] ->
         {:noreply, caches}
+
       _ ->
         pids_of_new_caches =
           for _ <- 1..num_caches do
             {:ok, pid} = StaffCache.start_link()
             pid
           end
+
         {:noreply, pids_of_new_caches ++ caches}
     end
   end
@@ -72,8 +75,8 @@ defmodule StaffCacheRegister do
     cache_pid = Enum.at(caches, index, default_cache)
     {:reply, cache_pid, caches}
   end
-
 end
+
 
 defmodule StaffCache do
   use Agent
