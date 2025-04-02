@@ -12,7 +12,7 @@ defmodule StaffCacheRegister do
   end
 
   def create(server, num_caches) do
-    GenServer.cast(server, {:create, num_caches})
+    GenServer.call(server, {:create, num_caches})
   end
 
   def add(server, num_caches) do
@@ -37,17 +37,6 @@ defmodule StaffCacheRegister do
   end
 
   @impl true
-  def handle_cast({:create, num_caches}, _caches) do
-    pids_of_caches =
-      for _ <- 1..num_caches do
-        {:ok, pid} = StaffCache.start_link()
-        pid
-      end
-
-    {:noreply, pids_of_caches}
-  end
-
-  @impl true
   def handle_cast({:add, num_caches}, caches) do
     case caches do
       [] ->
@@ -62,6 +51,17 @@ defmodule StaffCacheRegister do
 
         {:noreply, pids_of_new_caches ++ caches}
     end
+  end
+
+  @impl true
+  def handle_call({:create, num_caches}, _from, _caches) do
+    pids_of_caches =
+      for _ <- 1..num_caches do
+        {:ok, pid} = StaffCache.start_link()
+        pid
+      end
+
+    {:reply, pids_of_caches, pids_of_caches}
   end
 
   @impl true
