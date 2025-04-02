@@ -13,12 +13,12 @@ defmodule StaffCacheRegister do
   end
 
   @impl true
-  def handle_call({:list_caches}, _from, caches) do
+  def handle_call({:list}, _from, caches) do
     {:reply, caches}
   end
 
   @impl true
-  def handle_cast({:create_caches, num_caches}, caches) do
+  def handle_cast({:create, num_caches}, caches) do
     pids_of_caches =
       for _ <- 1..num_caches do
         {:ok, pid} = StaffCache.start_link()
@@ -28,7 +28,7 @@ defmodule StaffCacheRegister do
   end
 
   @impl true
-  def handle_cast({:add_caches, num_caches}, caches) do
+  def handle_cast({:add, num_caches}, caches) do
     pids_of_new_caches =
       for _ <- 1..num_caches do
         {:ok, pid} = StaffCache.start_link()
