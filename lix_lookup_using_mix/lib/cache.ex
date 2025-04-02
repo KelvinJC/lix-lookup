@@ -1,67 +1,46 @@
 defmodule StaffCacheRegister do
-  use Agent
+  use GenServer
 
   @moduledoc """
   `StaffCacheRegister` is responsible for generating and tracking multiple `StaffCache` agent processes. \\
   The PID for each process is stored in a list within its internal state.
   """
-  def start_link(num_caches) do
-    Agent.start(fn ->
-      caches =
-        for _ <- 1..num_caches do
-          {:ok, cache_pid} = StaffCache.start_link()
-          cache_pid
-        end
 
-      [next_cache | rest_caches] = caches
-      {next_cache, rest_caches, caches}
-    end)
+  ## define GenServer callbacks
+  @impl true
+  def init(:ok) do
+    {:ok, []}
   end
 
-  def list_caches(agent) do
-    Agent.get(agent, fn {_, _, caches} -> caches end)
+  @impl true
+  def handle_call({:list_caches}, _from, caches) do
+    {:reply, caches}
   end
 
-  @doc """
-  Each query for a cache process returns the PID at the given index.
-  """
-  def get_cache_by_index(agent, index) do
-    Agent.get(agent, fn {_, _, caches} ->
-      default_cache = Enum.at(caches, 0)
-      Enum.at(caches, index, default_cache)
-    end)
+  @impl true
+  def handle_call({:get_cache_by_index, index}, _from, caches) do
+    default_cache = Enum.at(caches, 0)
+    Enum.at(caches, index, default_cache)
   end
 
-  @doc """
-  Each query for a cache process returns a new PID by cycling through the list of processes.
-  """
-  def get_cache(agent) do
-    {next_cache, _, _} = get_next_cache(agent)
-    next_cache
-  end
-
-  defp get_next_cache(agent) do
-    Agent.get_and_update(
-      agent,
-      fn {_current_cache, rest_caches, caches} = old_state ->
-        new_state = loop_through_caches(rest_caches, caches)
-        # Agent.get_and_update/3 only returns the first element of tuple result
-        {old_state, new_state}
+  @impl true
+  def handle_cast({:create_caches, num_caches}, caches) do
+    pids_of_caches =
+      for _ <- 1..num_caches do
+        {:ok, pid} = StaffCache.start_link()
+        pid
       end
-    )
+    {:noreply, pids_of_caches}
   end
 
-  defp loop_through_caches(previous_remaining_caches, original_caches) do
-    # If previous_remaining_caches is empty, reset to the original list of caches
-    new_remaining_caches =
-      if previous_remaining_caches == [] do
-        original_caches
-      else
-        previous_remaining_caches
+  @impl true
+  def handle_cast({:add_caches, num_caches}, caches) do
+    pids_of_new_caches =
+      for _ <- 1..num_caches do
+        {:ok, pid} = StaffCache.start_link()
+        pid
       end
-
-    [next_cache | rest_caches] = new_remaining_caches
-    {next_cache, rest_caches, original_caches}
+    {:noreply, pids_of_new_caches ++ caches}
   end
 end
 
