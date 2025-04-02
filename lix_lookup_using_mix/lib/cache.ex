@@ -18,12 +18,6 @@ defmodule StaffCacheRegister do
   end
 
   @impl true
-  def handle_call({:get_cache_by_index, index}, _from, caches) do
-    default_cache = Enum.at(caches, 0)
-    Enum.at(caches, index, default_cache)
-  end
-
-  @impl true
   def handle_cast({:create_caches, num_caches}, caches) do
     pids_of_caches =
       for _ <- 1..num_caches do
@@ -41,6 +35,12 @@ defmodule StaffCacheRegister do
         pid
       end
     {:noreply, pids_of_new_caches ++ caches}
+  end
+
+  @impl true
+  def handle_call({:get_cache_by_index, index}, _from, caches) do
+    default_cache = Enum.at(caches, 0)
+    Enum.at(caches, index, default_cache)
   end
 end
 
