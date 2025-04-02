@@ -6,6 +6,29 @@ defmodule StaffCacheRegister do
   The PID for each process is stored in a list within its internal state.
   """
 
+  def start_link(opts) do
+    GenServer.start_link(__MODULE__, :ok, opts)
+  end
+
+  def create(server, num_caches) do
+    GenServer.cast(server, {:create, num_caches})
+  end
+
+  def add(server, num_caches) do
+    GenServer.cast(server, {:add, num_caches})
+  end
+
+  def list(server) do
+    GenServer.call(server, {:list})
+  end
+
+  @doc """
+  Each query for a cache process returns the PID at the given index.
+  """
+  def get_cache_by_index(server, index) do
+    GenServer.call(server, {:get_cache_by_index, index})
+  end
+
   ## define GenServer callbacks
   @impl true
   def init(:ok) do
