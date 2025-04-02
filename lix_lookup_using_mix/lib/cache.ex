@@ -6,7 +6,7 @@ defmodule StaffCacheRegister do
   The PID for each process is stored in a list within its internal state.
   """
 
-  ## define GenServer client API
+  ## GenServer client API
   def start_link(opts) do
     GenServer.start_link(__MODULE__, :ok, opts)
   end
@@ -30,7 +30,7 @@ defmodule StaffCacheRegister do
     GenServer.call(server, {:get_cache_by_index, index})
   end
 
-  ## define GenServer callbacks
+  ## GenServer callbacks
   @impl true
   def init(:ok) do
     {:ok, []}
