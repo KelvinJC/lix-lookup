@@ -1,5 +1,5 @@
 # Quick recap of implementation.
-# 1. The main process creates an agent process `StaffCacheRegister` responsible for
+# 1. The main process creates a GenServer process `StaffCacheRegister` responsible for
 #    generating and tracking multiple agent processes to serve as in-memory caches.
 # 2. The main process streams rows of data from a file.
 # 3. It spawns multiple asynchronous processes, each responsible for:
@@ -54,7 +54,8 @@ defmodule LixLookup do
     {all_staff, region_staff, region_staff_emails, read_chunk_size, lines_per_chunk,
      proc_time_out} = args
 
-    {:ok, cache_register_pid} = StaffCacheRegister.start_link(@num_caches)
+    {:ok, cache_register_pid} = StaffCacheRegister.start_link()
+    StaffCacheRegister.create(cache_register_pid, @num_caches)
 
     stream_read(all_staff, read_chunk_size, lines_per_chunk)
     |> build_staff_map(cache_register_pid, proc_time_out)
@@ -148,7 +149,7 @@ defmodule LixLookup do
   end
 
   def assemble_matched_staff_and_export_to_csv(reg_pid, path) do
-    StaffCacheRegister.list_caches(reg_pid)
+    StaffCacheRegister.list(reg_pid)
     |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
     |> FileOps.write_stream_to_csv(path, headers: ["staff_id, name, email\n"])
   end
