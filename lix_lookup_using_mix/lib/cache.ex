@@ -7,7 +7,7 @@ defmodule StaffCacheRegister do
   """
 
   ## GenServer client API
-  def start_link(opts) do
+  def start_link(opts \\ []) do
     GenServer.start_link(__MODULE__, :ok, opts)
   end
 
