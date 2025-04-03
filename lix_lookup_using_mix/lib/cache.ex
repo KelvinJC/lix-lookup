@@ -33,47 +33,73 @@ defmodule StaffCacheRegister do
   ## GenServer callbacks
   @impl true
   def init(:ok) do
-    {:ok, []}
+    caches = []
+    refs = %{}
+    {:ok, {caches, refs}}
   end
 
   @impl true
-  def handle_cast({:add, num_caches}, caches) do
+  def handle_cast({:add, num_caches}, state) do
+    {caches, refs} = state
     case caches do
       [] ->
-        {:noreply, caches}
+        {:noreply, state}
 
       _ ->
         pids_of_new_caches =
-          for _ <- 1..num_caches do
+          for _ <- 0..num_caches - 1 do
             {:ok, pid} = StaffCache.start_link()
             pid
           end
 
-        {:noreply, pids_of_new_caches ++ caches}
+        new_caches = pids_of_new_caches ++ caches
+        {:noreply, {new_caches, refs}}
     end
   end
 
   @impl true
-  def handle_call({:create, num_caches}, _from, _caches) do
+  def handle_call({:create, num_caches}, _from, _state) do
     pids_of_caches =
       for _ <- 1..num_caches do
-        {:ok, pid} = StaffCache.start_link()
-        pid
+        {:ok, cache} = StaffCache.start_link()
+        cache
       end
 
-    {:reply, pids_of_caches, pids_of_caches}
+    refs =
+      for cache <- pids_of_caches,
+        into: %{} do
+          ref = Process.monitor(cache)
+          {ref, cache}
+      end
+
+    {:reply, pids_of_caches, {pids_of_caches, refs}}
   end
 
   @impl true
-  def handle_call({:list}, _from, caches) do
-    {:reply, caches, caches}
+  def handle_call({:list}, _from, state) do
+    {caches, _} = state
+    {:reply, caches, state}
   end
 
   @impl true
-  def handle_call({:get_cache_by_index, index}, _from, caches) do
+  def handle_call({:get_cache_by_index, index}, _from, {caches, _} = state) do
     default_cache = Enum.at(caches, 0)
     cache_pid = Enum.at(caches, index, default_cache)
-    {:reply, cache_pid, caches}
+    {:reply, cache_pid, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, {caches, refs}) do
+    {cache, refs} = Map.pop(refs, ref)
+    caches = List.delete(caches, cache)
+    {:noreply, {caches, refs}}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    require Logger
+    Logger.debug("Unexpected message in StaffCacheRegister: #{inspect(msg)}")
+    {:noreply, state}
   end
 end
 
