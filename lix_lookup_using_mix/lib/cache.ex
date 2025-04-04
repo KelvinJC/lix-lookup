@@ -1,8 +1,8 @@
 defmodule StaffCache do
   use Agent
 
-  def start_link() do
-    Agent.start_link(fn -> {%{}, []} end)
+  def start_link(name) do
+    Agent.start_link(fn -> {%{}, []} end, name: name)
   end
 
   def get_state(agent) do
