@@ -46,10 +46,12 @@ defmodule StaffCacheRegister do
         {:noreply, state}
 
       _ ->
+        current_cache_count = length(caches)
+        final_cache_count = current_cache_count + num_caches
         pids_of_new_caches =
-          for num <- 0..num_caches - 1 do
-            {:ok, pid} = StaffCache.start_link(name: String.to_atom("Agent#{num}"))
-            pid
+          for i <- current_cache_count..final_cache_count do
+            {:ok, cache} = DynamicSupervisor.start_child(CacheSupervisor, {StaffCache, String.to_atom("Cache_#{i}")})
+            cache
           end
 
         new_caches = pids_of_new_caches ++ caches
@@ -57,21 +59,23 @@ defmodule StaffCacheRegister do
     end
   end
 
+  defp monitor_caches(pids_of_caches) do
+    for pid <- pids_of_caches,
+      into: %{} do
+        ref = Process.monitor(pid)
+        {ref, pid}
+    end
+  end
+
   @impl true
   def handle_call({:create, num_caches}, _from, _state) do
-    names = [:agent01, :agent02, :agent03, :agentd, :agente, :agentf, :agentg, :agenth, :agenti, :agentj]
     pids_of_caches =
-      for i <- 0..num_caches - 1 do
-        {:ok, cache} = StaffCache.start_link(name: Enum.at(names, i))
+      for i <- 0..num_caches  - 1 do
+        {:ok, cache} = DynamicSupervisor.start_child(CacheSupervisor, {StaffCache, String.to_atom("Cache_#{i}")})
         cache
       end
 
-    refs =
-      for cache <- pids_of_caches,
-        into: %{} do
-          ref = Process.monitor(cache)
-          {ref, cache}
-      end
+    refs = monitor_caches(pids_of_caches)
 
     {:reply, pids_of_caches, {pids_of_caches, refs}}
   end
@@ -85,14 +89,23 @@ defmodule StaffCacheRegister do
   @impl true
   def handle_call({:get_cache_by_index, index}, _from, {caches, _} = state) do
     default_cache = Enum.at(caches, 0)
-    cache_pid = Enum.at(caches, index, default_cache)
+    # cache_pid = Enum.at(caches, index, default_cache)
+    cache_pid = Enum.at(caches, index)
     {:reply, cache_pid, state}
   end
 
   @impl true
-  def handle_info({:DOWN, ref, :process, _pid, _reason}, {caches, refs}) do
-    {cache, refs} = Map.pop(refs, ref)
-    caches = List.delete(caches, cache)
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, {_caches, _refs}) do
+    # {_, refs} = Map.pop(refs, ref)
+    # caches = List.delete(caches, cache)
+
+    caches =
+      for {_, pid, _, _} <- DynamicSupervisor.which_children(CacheSupervisor) do
+        pid
+      end
+
+    refs = monitor_caches(caches)
+
     {:noreply, {caches, refs}}
   end
 
