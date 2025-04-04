@@ -68,11 +68,15 @@ defmodule StaffCacheRegister do
   end
 
   @impl true
-  def handle_call({:create, num_caches}, _from, _state) do
+  def handle_call({:create, num_caches}, _from, {caches, _}) do
     pids_of_caches =
-      for i <- 0..num_caches  - 1 do
-        {:ok, cache} = DynamicSupervisor.start_child(CacheSupervisor, {StaffCache, String.to_atom("Cache_#{i}")})
-        cache
+      if length(caches) > 0 do
+        caches
+      else
+        for i <- 0..num_caches  - 1 do
+          {:ok, cache} = DynamicSupervisor.start_child(CacheSupervisor, {StaffCache, String.to_atom("Cache_#{i}")})
+          cache
+        end
       end
 
     refs = monitor_caches(pids_of_caches)
