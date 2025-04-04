@@ -150,8 +150,12 @@ defmodule LixLookup do
   end
 
   def assemble_matched_staff_and_export_to_csv(reg_pid, path) do
-    StaffCacheRegister.list(reg_pid)
-    |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
-    |> FileOps.write_stream_to_csv(path, headers: ["staff_id, name, email\n"])
+    res =
+      StaffCacheRegister.list(reg_pid)
+      |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
+      |> FileOps.write_stream_to_csv(path, headers: ["staff_id, name, email\n"])
+
+    StaffCacheRegister.clear_all(reg_pid) # clear all caches against next program run
+    res
   end
 end

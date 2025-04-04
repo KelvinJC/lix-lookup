@@ -23,6 +23,10 @@ defmodule StaffCacheRegister do
     GenServer.call(server, {:list})
   end
 
+  def clear_all(server) do
+    GenServer.cast(server, {:clear_cache})
+  end
+
   @doc """
   Each query for a cache process returns the PID at the given index.
   """
@@ -57,6 +61,14 @@ defmodule StaffCacheRegister do
         new_caches = pids_of_new_caches ++ caches
         {:noreply, {new_caches, refs}}
     end
+  end
+
+  @impl true
+  def handle_cast({:clear_cache}, {caches, _} = state) do
+    for cache <- caches do
+      StaffCache.clear_cache(cache)
+    end
+    {:noreply, state}
   end
 
   defp monitor_caches(pids_of_caches) do

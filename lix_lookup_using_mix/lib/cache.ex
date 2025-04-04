@@ -50,4 +50,10 @@ defmodule StaffCache do
       end
     end)
   end
+
+  def clear_cache(agent) do
+    Agent.get_and_update(agent, fn {all_staff, matched_staff} ->
+      {{all_staff, matched_staff}, {%{}, []}}
+    end)
+  end
 end
