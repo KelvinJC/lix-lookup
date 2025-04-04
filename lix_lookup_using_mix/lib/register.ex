@@ -88,8 +88,6 @@ defmodule StaffCacheRegister do
 
   @impl true
   def handle_call({:get_cache_by_index, index}, _from, {caches, _} = state) do
-    default_cache = Enum.at(caches, 0)
-    # cache_pid = Enum.at(caches, index, default_cache)
     cache_pid = Enum.at(caches, index)
     {:reply, cache_pid, state}
   end
