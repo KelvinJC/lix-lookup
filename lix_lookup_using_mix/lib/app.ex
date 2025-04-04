@@ -3,6 +3,7 @@ defmodule App do
 
   @impl true
   def start(_type, _args) do
-    AppSupervisor.start_link(name: AppSupervisor)
+    # CacheSupervisor.start_link(name: CacheSupervisor)
+    CacheRegisterSupervisor.start_link(name: CacheRegisterSupervisor)
   end
 end
