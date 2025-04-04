@@ -54,15 +54,15 @@ defmodule LixLookup do
     {all_staff, region_staff, region_staff_emails, read_chunk_size, lines_per_chunk,
      proc_time_out} = args
 
-    StaffCacheRegister.create(StaffCacheRegister, @num_caches)
+    StaffCacheRegister.create(CacheRegister, @num_caches)
 
     stream_read(all_staff, read_chunk_size, lines_per_chunk)
-    |> build_staff_map(StaffCacheRegister, proc_time_out)
+    |> build_staff_map(CacheRegister, proc_time_out)
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
-    |> match_region_staff_emails(StaffCacheRegister, proc_time_out)
+    |> match_region_staff_emails(CacheRegister, proc_time_out)
 
-    assemble_matched_staff_and_export_to_csv(StaffCacheRegister, region_staff_emails)
+    assemble_matched_staff_and_export_to_csv(CacheRegister, region_staff_emails)
   end
 
   defp stream_read(path, chunk_size, lines_per_chunk) do
