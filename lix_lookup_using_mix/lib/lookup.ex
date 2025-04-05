@@ -109,7 +109,7 @@ defmodule LixLookup do
 
   def match_region_staff_emails(region_staff, pid, time_out) do
     region_staff
-    |> Task.async_stream(&lookup(&1, pid),
+    |> Task.async_stream(&match(&1, pid),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
@@ -117,7 +117,7 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp lookup(staff_list, reg_pid) do
+  defp match(staff_list, reg_pid) do
     staff_list
     |> Enum.map(fn [_, id, name, _] ->
       email = get(id)
