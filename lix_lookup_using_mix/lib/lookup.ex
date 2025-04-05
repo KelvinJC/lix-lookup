@@ -56,13 +56,11 @@ defmodule LixLookup do
     {all_staff, region_staff, region_staff_emails, read_chunk_size, lines_per_chunk,
      proc_time_out} = args
 
-    StaffCacheRegister.create(CacheRegister, @num_caches)
-
     stream_read(all_staff, read_chunk_size, lines_per_chunk)
-    |> cache_staff_data(CacheRegister, proc_time_out)
+    |> cache_staff_data(Cache, proc_time_out)
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
-    |> match_region_staff_emails(CacheRegister, proc_time_out)
+    |> match_region_staff_emails(Cache, proc_time_out)
     |> export_to_csv(region_staff_emails)
   end
 
