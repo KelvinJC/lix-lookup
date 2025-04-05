@@ -63,8 +63,7 @@ defmodule LixLookup do
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
     |> match_region_staff_emails(CacheRegister, proc_time_out)
-
-    assemble_matched_staff_and_export_to_csv(CacheRegister, region_staff_emails)
+    |> export_to_csv(region_staff_emails)
   end
 
   defp stream_read(path, chunk_size, lines_per_chunk) do
@@ -136,13 +135,7 @@ defmodule LixLookup do
     end)
   end
 
-  def assemble_matched_staff_and_export_to_csv(reg_pid, path) do
-    res =
-      StaffCacheRegister.list(reg_pid)
-      |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
-      |> FileOps.write_stream_to_csv(path, headers: ["staff_id, name, email\n"])
-
-    StaffCacheRegister.clear_all(reg_pid) # clear all caches against next program run
-    res
+  d   |> export_to_csv(matched_staff, path) do
+    FileOps.write_stream_to_csv(matched_staff, path, headers: ["staff_id, name, email\n"])
   end
 end
