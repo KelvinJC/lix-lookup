@@ -128,7 +128,7 @@ defmodule LixLookup do
 
   def match_region_staff_emails(region_staff, pid, time_out) do
     region_staff
-    |> Task.async_stream(&match_per_cache(&1, pid),
+    |> Task.async_stream(&lookup(&1, pid),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
@@ -136,16 +136,22 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp match_per_cache(staff_list, reg_pid) do
+  defp lookup(staff_list, reg_pid) do
     staff_list
-    |> Stream.map(&String.trim(&1))
-    |> Stream.map(&String.split(&1, ","))
-    |> Enum.group_by(fn [_, id, _, _] -> String.first(id) end)
-    |> Enum.each(fn {index, records} ->
-      {int_index, _} = Integer.parse(index)
+    |> Enum.map(fn [_, id, name, _] ->
+      email = get(id)
 
-      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
-      |> StaffCache.match_staff(records)
+      if email == nil do
+        {:error, "Staff ID does not match any record."}
+      else
+        {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+      end
+    end)
+    |> Enum.map(fn {tag, row} ->
+      case tag do
+        :ok -> row
+        :error -> []
+      end
     end)
   end
 
