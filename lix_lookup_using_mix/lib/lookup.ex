@@ -27,7 +27,6 @@ defmodule LixLookup do
   @default_read_chunk_size 500_000 # 500 KB
   @default_proc_time_out 30_000    # 30,000 milliseconds == 30 seconds
   @max_concurrency System.schedulers_online()
-  @num_caches 10
 
   def run(args \\ []) do
     {time, result} =
@@ -57,10 +56,10 @@ defmodule LixLookup do
      proc_time_out} = args
 
     stream_read(all_staff, read_chunk_size, lines_per_chunk)
-    |> cache_staff_data(Cache, proc_time_out)
+    |> cache_staff_data(proc_time_out)
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
-    |> match_region_staff_emails(Cache, proc_time_out)
+    |> match_region_staff_emails(proc_time_out)
     |> export_to_csv(region_staff_emails)
   end
 
@@ -70,9 +69,9 @@ defmodule LixLookup do
     |> Stream.chunk_every(lines_per_chunk)
   end
 
-  defp cache_staff_data(all_staff, pid, time_out) do
+  defp cache_staff_data(all_staff, time_out) do
     all_staff
-    |> Task.async_stream(&cache_valid_line(&1, pid),
+    |> Task.async_stream(&cache_valid_line(&1),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
@@ -80,15 +79,13 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp cache_valid_line(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
+  defp cache_valid_line(chunk_of_lines) when is_list(chunk_of_lines) do
     for line <- chunk_of_lines do
       case parse_line(line) do
         {:ok, id, email} ->
-          i = Cache.put(id, email)
-          IO.inspect(i, label: "result from Cache.put")
-
+          Cache.put(id, email)
         {:error, _} ->
-        IO.inspect("dud here!")
+          nil
       end
     end
   end
@@ -104,36 +101,36 @@ defmodule LixLookup do
     end
   end
 
-  def match_region_staff_emails(region_staff, pid, time_out) do
+  def match_region_staff_emails(region_staff, time_out) do
     region_staff
-    |> Task.async_stream(&match(&1, pid),
+    |> Task.async_stream(&match(&1),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
     )
-    |> Stream.run()
+    |> Enum.flat_map(fn
+      {:ok, records} -> records
+      _ -> []
+    end)
   end
 
-  defp match(staff_list, reg_pid) do
+  defp match(staff_list) do
     staff_list
-    |> Enum.map(fn [_, id, name, _] ->
-      email = get(id)
+    |> Stream.map(&String.trim(&1))
+    |> Stream.map(&String.split(&1, ","))
+    |> Stream.map(fn [_, id, name, _] ->
+      email = Cache.get(id)
 
       if email == nil do
-        {:error, "Staff ID does not match any record."}
+        nil
       else
-        {:ok, "#{id}, #{String.trim(name)}, #{email}\n"}
+        "#{id}, #{String.trim(name)}, #{email}\n"
       end
     end)
-    |> Enum.map(fn {tag, row} ->
-      case tag do
-        :ok -> row
-        :error -> []
-      end
-    end)
+    |> Stream.reject(fn row -> row == :nil end)
   end
 
-  d   |> export_to_csv(matched_staff, path) do
+  def export_to_csv(matched_staff, path) do
     FileOps.write_stream_to_csv(matched_staff, path, headers: ["staff_id, name, email\n"])
   end
 end
