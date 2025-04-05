@@ -59,7 +59,7 @@ defmodule LixLookup do
     StaffCacheRegister.create(CacheRegister, @num_caches)
 
     stream_read(all_staff, read_chunk_size, lines_per_chunk)
-    |> build_staff_map(CacheRegister, proc_time_out)
+    |> cache_staff_data(CacheRegister, proc_time_out)
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
     |> match_region_staff_emails(CacheRegister, proc_time_out)
@@ -73,9 +73,9 @@ defmodule LixLookup do
     |> Stream.chunk_every(lines_per_chunk)
   end
 
-  defp build_staff_map(all_staff, pid, time_out) do
+  defp cache_staff_data(all_staff, pid, time_out) do
     all_staff
-    |> Task.async_stream(&build_and_cache_sorted_map(&1, pid),
+    |> Task.async_stream(&cache_valid_line(&1, pid),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
@@ -83,28 +83,16 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp build_and_cache_sorted_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
-    # Process each line in the chunk
-    # sort the id field
-    # merge the results into a single map & cache map in agent
+  defp cache_valid_line(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
+    for line <- chunk_of_lines do
+      case parse_line(line) do
+        {:ok, id, email} ->
+          i = Cache.put(id, email)
+          IO.inspect(i, label: "result from Cache.put")
 
-    map =
-      for line <- chunk_of_lines,
-          reduce: %{} do
-        sorted_map ->
-          case parse_line(line) do
-            {:ok, id, email} ->
-              add_to_sorted_map(id, String.downcase(email), sorted_map)
-
-            {:error, _} ->
-              sorted_map
-          end
+        {:error, _} ->
+        IO.inspect("dud here!")
       end
-
-    for {index, records} <- map,
-        {int_index, _} = Integer.parse(index) do
-      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
-      |> StaffCache.add_staff(records)
     end
   end
 
@@ -117,13 +105,6 @@ defmodule LixLookup do
       _ ->
         {:error, "Invalid line format: #{inspect(line)}"}
     end
-  end
-
-  defp add_to_sorted_map(id, email, sorted_map) do
-    index = String.first(id)
-    staff_records = Map.get(sorted_map, index, %{})
-    new_staff_records = Map.put_new(staff_records, id, email)
-    Map.put(sorted_map, index, new_staff_records)
   end
 
   def match_region_staff_emails(region_staff, pid, time_out) do
