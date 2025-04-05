@@ -1,8 +1,8 @@
 defmodule Cache do
   use GenServer
 
-  def start_link(_) do
-    Genserver.init(__MODULE__, :ok)
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, :ok, opts)
   end
 
   def get(key) do
@@ -17,7 +17,7 @@ defmodule Cache do
   def put(key, value), do: :ets.insert(:all_staff, {key, value})
 
   @impl true
-  def init(arg) do
+  def init(:ok) do
     :ets.new(:all_staff, [
       :set,
       :public,
@@ -26,6 +26,6 @@ defmodule Cache do
       {:write_concurrency, true}
     ])
 
-    {:ok, arg}
+    {:ok, []}
   end
 end
