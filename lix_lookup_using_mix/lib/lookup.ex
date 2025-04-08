@@ -1,20 +1,23 @@
 # Quick recap of implementation.
-# 1. The main process creates a GenServer process `StaffCacheRegister` responsible for
-#    generating and tracking multiple agent processes to serve as in-memory caches.
-# 2. The main process streams rows of data from a file.
+# 1. At the start of the application, a GenServer process `StaffCacheRegister` is kickstarted by a Supervisor process.
+#    It is responsible for
+#    - generating and monitoring multiple Agent processes
+#    - storing the PIDs of these agent processes which serve as in-memory caches.
+# 2. At the start of the program, the initial process streams rows of data from a file.
 # 3. It spawns multiple asynchronous processes, each responsible for:
 #    - Receiving and parsing rows of staff data.
 #    - Constructing a key-value map from the parsed rows.
 #    - Querying the `StaffCacheRegister` for the PID of a `StaffCache` process
 #    - Sending the map to the `StaffCache` process for caching.
-# 4. The main process streams lines of data from a second file.
+# 4. Then streams lines of data from a second file.
 # 5. It spawns another batch of async processes, each responsible for:
 #    - Receiving rows of streamed staff data.
 #    - Querying each `StaffCache` agent process to match staff with their emails.
 # 6. Each `StaffCache` process matches staff to their email records by performing lookups of each line against
 #    the key value map in its internal state.
 #    - It maintains a list of matched staff records.
-# 7. The main process retrieves the matched data from all caches and exports it to a CSV file.
+# 7. The initial process retrieves the matched data from all caches and exports it to a CSV file.
+
 
 defmodule LixLookup do
   @pwd "./"
