@@ -1,69 +1,108 @@
 defmodule StaffCacheRegister do
-  use Agent
+  use GenServer
 
   @moduledoc """
   `StaffCacheRegister` is responsible for generating and tracking multiple `StaffCache` agent processes. \\
   The PID for each process is stored in a list within its internal state.
   """
-  def start_link(num_caches) do
-    Agent.start(fn ->
-      caches =
-        for _ <- 1..num_caches do
-          {:ok, cache_pid} = StaffCache.start_link()
-          cache_pid
-        end
 
-      [next_cache | rest_caches] = caches
-      {next_cache, rest_caches, caches}
-    end)
+  ## GenServer client API
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, :ok, opts)
   end
 
-  def list_caches(agent) do
-    Agent.get(agent, fn {_, _, caches} -> caches end)
+  def create(server, num_caches) do
+    GenServer.call(server, {:create, num_caches})
+  end
+
+  def add(server, num_caches) do
+    GenServer.cast(server, {:add, num_caches})
+  end
+
+  def list(server) do
+    GenServer.call(server, {:list})
   end
 
   @doc """
   Each query for a cache process returns the PID at the given index.
   """
-  def get_cache_by_index(agent, index) do
-    Agent.get(agent, fn {_, _, caches} ->
-      default_cache = Enum.at(caches, 0)
-      Enum.at(caches, index, default_cache)
-    end)
+  def get_cache_by_index(server, index) do
+    GenServer.call(server, {:get_cache_by_index, index})
   end
 
-  @doc """
-  Each query for a cache process returns a new PID by cycling through the list of processes.
-  """
-  def get_cache(agent) do
-    {next_cache, _, _} = get_next_cache(agent)
-    next_cache
+  ## GenServer callbacks
+  @impl true
+  def init(:ok) do
+    caches = []
+    refs = %{}
+    {:ok, {caches, refs}}
   end
 
-  defp get_next_cache(agent) do
-    Agent.get_and_update(
-      agent,
-      fn {_current_cache, rest_caches, caches} = old_state ->
-        new_state = loop_through_caches(rest_caches, caches)
-        # Agent.get_and_update/3 only returns the first element of tuple result
-        {old_state, new_state}
+  @impl true
+  def handle_cast({:add, num_caches}, state) do
+    {caches, refs} = state
+    case caches do
+      [] ->
+        {:noreply, state}
+
+      _ ->
+        pids_of_new_caches =
+          for _ <- 0..num_caches - 1 do
+            {:ok, pid} = StaffCache.start_link()
+            pid
+          end
+
+        new_caches = pids_of_new_caches ++ caches
+        {:noreply, {new_caches, refs}}
+    end
+  end
+
+  @impl true
+  def handle_call({:create, num_caches}, _from, _state) do
+    pids_of_caches =
+      for _ <- 1..num_caches do
+        {:ok, cache} = StaffCache.start_link()
+        cache
       end
-    )
-  end
 
-  defp loop_through_caches(previous_remaining_caches, original_caches) do
-    # If previous_remaining_caches is empty, reset to the original list of caches
-    new_remaining_caches =
-      if previous_remaining_caches == [] do
-        original_caches
-      else
-        previous_remaining_caches
+    refs =
+      for cache <- pids_of_caches,
+        into: %{} do
+          ref = Process.monitor(cache)
+          {ref, cache}
       end
 
-    [next_cache | rest_caches] = new_remaining_caches
-    {next_cache, rest_caches, original_caches}
+    {:reply, pids_of_caches, {pids_of_caches, refs}}
+  end
+
+  @impl true
+  def handle_call({:list}, _from, state) do
+    {caches, _} = state
+    {:reply, caches, state}
+  end
+
+  @impl true
+  def handle_call({:get_cache_by_index, index}, _from, {caches, _} = state) do
+    default_cache = Enum.at(caches, 0)
+    cache_pid = Enum.at(caches, index, default_cache)
+    {:reply, cache_pid, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, _reason}, {caches, refs}) do
+    {cache, refs} = Map.pop(refs, ref)
+    caches = List.delete(caches, cache)
+    {:noreply, {caches, refs}}
+  end
+
+  @impl true
+  def handle_info(msg, state) do
+    require Logger
+    Logger.debug("Unexpected message in StaffCacheRegister: #{inspect(msg)}")
+    {:noreply, state}
   end
 end
+
 
 defmodule StaffCache do
   use Agent
