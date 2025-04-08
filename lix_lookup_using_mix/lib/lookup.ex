@@ -10,6 +10,7 @@
 #    - Querying the `StaffCacheRegister` for the PID of a `StaffCache` process
 #    - Sending the map to the `StaffCache` process for caching.
 # 4. Then streams lines of data from a second file.
+# 4. Then streams lines of data from a second file.
 # 5. It spawns another batch of async processes, each responsible for:
 #    - Receiving rows of streamed staff data.
 #    - Querying each `StaffCache` agent process to match staff with their emails.
@@ -62,7 +63,7 @@ defmodule LixLookup do
     |> build_staff_map(CacheRegister, proc_time_out)
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
-    |> match_region_staff_emails(CacheRegister, proc_time_out)
+    |> fetch_region_staff_emails(StaffCacheRegister, proc_time_out)
 
     assemble_matched_staff_and_export_to_csv(CacheRegister, region_staff_emails)
   end
@@ -126,9 +127,9 @@ defmodule LixLookup do
     Map.put(sorted_map, index, new_staff_records)
   end
 
-  def match_region_staff_emails(region_staff, pid, time_out) do
+  def fetch_region_staff_emails(region_staff, pid, time_out) do
     region_staff
-    |> Task.async_stream(&match_per_cache(&1, pid),
+    |> Task.async_stream(&lookup_staff_email_from_caches(&1, pid),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
@@ -136,11 +137,11 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp match_per_cache(staff_list, reg_pid) do
+  defp lookup_staff_email_from_caches(staff_list, reg_pid) do
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
-    |> Enum.group_by(fn [_, id, _, _] -> String.first(id) end)
+    |> Enum.group_by(fn [_, staff_id, _, _] -> String.first(staff_id) end)
     |> Enum.each(fn {index, records} ->
       {int_index, _} = Integer.parse(index)
 
