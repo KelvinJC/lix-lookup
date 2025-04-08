@@ -6,6 +6,7 @@
 #    - Receiving and parsing rows of staff data.
 #    - Caching the id and email field from each parsed rows.
 # 4. Then streams lines of data from a second file.
+# 4. Then streams lines of data from a second file.
 # 5. It spawns another batch of async processes, each responsible for:
 #    - Receiving rows of streamed staff data.
 #    - Performs lookups on the ETS `:all_staff` table to match staff with their emails.
