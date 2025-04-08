@@ -52,7 +52,7 @@ defmodule LixLookup do
     |> cache_staff_data(proc_time_out)
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
-    |> match_region_staff_emails(proc_time_out)
+    |> fetch_region_staff_emails(proc_time_out)
     |> export_to_csv(region_staff_emails)
   end
 
@@ -94,9 +94,9 @@ defmodule LixLookup do
     end
   end
 
-  def match_region_staff_emails(region_staff, time_out) do
+  def fetch_region_staff_emails(region_staff, time_out) do
     region_staff
-    |> Task.async_stream(&match(&1),
+    |> Task.async_stream(&match_staff_id_to_email(&1),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
@@ -107,17 +107,17 @@ defmodule LixLookup do
     end)
   end
 
-  defp match(staff_list) do
+  defp match_staff_id_to_email(staff_list) do
     staff_list
     |> Stream.map(&String.trim(&1))
     |> Stream.map(&String.split(&1, ","))
-    |> Stream.map(fn [_, id, name, _] ->
-      email = Cache.get(id)
+    |> Stream.map(fn [_, staff_id, name, _] ->
+      email = Cache.get(staff_id)
 
       if email == nil do
         nil
       else
-        "#{id}, #{String.trim(name)}, #{email}\n"
+        "#{staff_id}, #{String.trim(name)}, #{email}\n"
       end
     end)
     |> Stream.reject(fn row -> row == :nil end)
