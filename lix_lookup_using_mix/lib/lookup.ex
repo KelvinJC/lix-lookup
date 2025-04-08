@@ -1,23 +1,16 @@
 # Quick recap of implementation.
-# 1. At the start of the application, a GenServer process `StaffCacheRegister` is kickstarted by a Supervisor process.
-#    It is responsible for
-#    - triggering a Dynamic Supervisor to generate and monitor multiple Agent processes
-#    - storing the PIDs of these agent processes which serve as in-memory caches.
-# 2. At the start of the program, the initial process streams rows of data from a file.
+# 1. At the start of the application, a GenServer process `Cache` is kickstarted by a Supervisor process.
+#    - It is responsible for creating an ETS table serve as in-memory cache.
+# 2. When the run/1 function is called, the initial process streams rows of data from a file.
 # 3. It spawns multiple asynchronous processes, each responsible for:
 #    - Receiving and parsing rows of staff data.
-#    - Constructing a key-value map from the parsed rows.
-#    - Querying the `StaffCacheRegister` for the PID of a `StaffCache` process
-#    - Sending the map to the `StaffCache` process for caching.
+#    - Caching the id and email field from each parsed rows.
 # 4. Then streams lines of data from a second file.
 # 4. Then streams lines of data from a second file.
 # 5. It spawns another batch of async processes, each responsible for:
 #    - Receiving rows of streamed staff data.
-#    - Querying each `StaffCache` agent process to match staff with their emails.
-# 6. Each `StaffCache` process matches staff to their email records by performing lookups of each line against
-#    the key value map in its internal state.
-#    - It maintains a list of matched staff records.
-# 7. The initial process retrieves the matched data from all caches and exports it to a CSV file.
+#    - Performs lookups on the ETS `:all_staff` table to match staff with their emails.
+# 6. The initial process retrieves the matched data from all async processes and exports it to a CSV file.
 
 defmodule LixLookup do
   @pwd "./"
@@ -28,7 +21,6 @@ defmodule LixLookup do
   @default_read_chunk_size 500_000 # 500 KB
   @default_proc_time_out 30_000    # 30,000 milliseconds == 30 seconds
   @max_concurrency System.schedulers_online()
-  @num_caches 10
 
   def run(args \\ []) do
     {time, result} =
@@ -57,15 +49,12 @@ defmodule LixLookup do
     {all_staff, region_staff, region_staff_emails, read_chunk_size, lines_per_chunk,
      proc_time_out} = args
 
-    StaffCacheRegister.create(CacheRegister, @num_caches)
-
     stream_read(all_staff, read_chunk_size, lines_per_chunk)
-    |> build_staff_map(CacheRegister, proc_time_out)
+    |> cache_staff_data(proc_time_out)
 
     stream_read(region_staff, read_chunk_size, lines_per_chunk)
-    |> fetch_region_staff_emails(StaffCacheRegister, proc_time_out)
-
-    assemble_matched_staff_and_export_to_csv(CacheRegister, region_staff_emails)
+    |> fetch_region_staff_emails(proc_time_out)
+    |> export_to_csv(region_staff_emails)
   end
 
   defp stream_read(path, chunk_size, lines_per_chunk) do
@@ -74,9 +63,9 @@ defmodule LixLookup do
     |> Stream.chunk_every(lines_per_chunk)
   end
 
-  defp build_staff_map(all_staff, pid, time_out) do
+  defp cache_staff_data(all_staff, time_out) do
     all_staff
-    |> Task.async_stream(&build_and_cache_sorted_map(&1, pid),
+    |> Task.async_stream(&cache_valid_line(&1),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
@@ -84,28 +73,14 @@ defmodule LixLookup do
     |> Stream.run()
   end
 
-  defp build_and_cache_sorted_map(chunk_of_lines, reg_pid) when is_list(chunk_of_lines) do
-    # Process each line in the chunk
-    # sort the id field
-    # merge the results into a single map & cache map in agent
-
-    map =
-      for line <- chunk_of_lines,
-          reduce: %{} do
-        sorted_map ->
-          case parse_line(line) do
-            {:ok, id, email} ->
-              add_to_sorted_map(id, String.downcase(email), sorted_map)
-
-            {:error, _} ->
-              sorted_map
-          end
+  defp cache_valid_line(chunk_of_lines) when is_list(chunk_of_lines) do
+    for line <- chunk_of_lines do
+      case parse_line(line) do
+        {:ok, id, email} ->
+          Cache.put(id, email)
+        {:error, _} ->
+          nil
       end
-
-    for {index, records} <- map,
-        {int_index, _} = Integer.parse(index) do
-      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
-      |> StaffCache.add_staff(records)
     end
   end
 
@@ -120,43 +95,36 @@ defmodule LixLookup do
     end
   end
 
-  defp add_to_sorted_map(id, email, sorted_map) do
-    index = String.first(id)
-    staff_records = Map.get(sorted_map, index, %{})
-    new_staff_records = Map.put_new(staff_records, id, email)
-    Map.put(sorted_map, index, new_staff_records)
-  end
-
-  def fetch_region_staff_emails(region_staff, pid, time_out) do
+  def fetch_region_staff_emails(region_staff, time_out) do
     region_staff
-    |> Task.async_stream(&lookup_staff_email_from_caches(&1, pid),
+    |> Task.async_stream(&match_staff_id_to_email(&1),
       max_concurrency: @max_concurrency,
       timeout: time_out,
       on_timeout: :kill_task
     )
-    |> Stream.run()
-  end
-
-  defp lookup_staff_email_from_caches(staff_list, reg_pid) do
-    staff_list
-    |> Stream.map(&String.trim(&1))
-    |> Stream.map(&String.split(&1, ","))
-    |> Enum.group_by(fn [_, staff_id, _, _] -> String.first(staff_id) end)
-    |> Enum.each(fn {index, records} ->
-      {int_index, _} = Integer.parse(index)
-
-      StaffCacheRegister.get_cache_by_index(reg_pid, int_index)
-      |> StaffCache.match_staff(records)
+    |> Enum.flat_map(fn
+      {:ok, records} -> records
+      _ -> []
     end)
   end
 
-  def assemble_matched_staff_and_export_to_csv(reg_pid, path) do
-    res =
-      StaffCacheRegister.list(reg_pid)
-      |> Stream.map(fn cache -> StaffCache.get_all_matched_staff(cache) end)
-      |> FileOps.write_stream_to_csv(path, headers: ["staff_id, name, email\n"])
+  defp match_staff_id_to_email(staff_list) do
+    staff_list
+    |> Stream.map(&String.trim(&1))
+    |> Stream.map(&String.split(&1, ","))
+    |> Stream.map(fn [_, staff_id, name, _] ->
+      email = Cache.get(staff_id)
 
-    StaffCacheRegister.clear_all(reg_pid) # clear all caches against next program run
-    res
+      if email == nil do
+        nil
+      else
+        "#{staff_id}, #{String.trim(name)}, #{email}\n"
+      end
+    end)
+    |> Stream.reject(fn row -> row == :nil end)
+  end
+
+  def export_to_csv(matched_staff, path) do
+    FileOps.write_stream_to_csv(matched_staff, path, headers: ["staff_id, name, email\n"])
   end
 end
